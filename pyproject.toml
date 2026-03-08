@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "FinOps reporting and scheduling toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "boto3>=1.42.63",
+]
 
 [project.scripts]
 finops-pack = "finops_pack.cli:main"
@@ -20,6 +22,10 @@ dev = [
 requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [tool.ruff]
 line-length = 100
 
@@ -31,6 +37,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
+ignore_missing_imports = true
 python_version = "3.11"
 packages = ["finops_pack"]
 warn_return_any = true
