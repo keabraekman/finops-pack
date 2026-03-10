@@ -1,9 +1,22 @@
-from pytest import CaptureFixture
+import subprocess
+import sys
 
-from finops_pack.cli import main
+
+def test_demo_command_runs() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "finops_pack", "demo"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "Running finops-pack in demo mode" in result.stdout
 
 
-def test_main_prints_message(capsys: CaptureFixture[str]) -> None:
-    main()
-    captured = capsys.readouterr()
-    assert "finops-pack CLI is set up." in captured.out
+def test_run_requires_role_arn() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "finops_pack", "run"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "role_arn is required" in result.stdout

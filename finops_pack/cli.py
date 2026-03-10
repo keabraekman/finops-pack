@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any
 
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.config import load_config, merge_run_config
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,57 +18,111 @@ def build_parser() -> argparse.ArgumentParser:
         description="Starter CLI for the finops_pack project.",
     )
 
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run finops-pack against AWS.",
+    )
+    run_parser.add_argument(
         "--role-arn",
         help="AWS IAM role ARN to assume.",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--external-id",
         help="External ID to use when assuming the role.",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--region",
-        default="us-east-1",
         help="AWS region to use (default: us-east-1).",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--session-name",
-        default="finops-pack",
         help="STS session name (default: finops-pack).",
     )
-    parser.add_argument(
+    run_parser.add_argument(
         "--check-identity",
         action="store_true",
         help="Call STS GetCallerIdentity after assuming the role.",
+    )
+    run_parser.add_argument(
+        "--config",
+        help="Optional path to config.yaml.",
+    )
+
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="Run finops-pack in demo mode using fixture data.",
+    )
+    demo_parser.add_argument(
+        "--config",
+        help="Optional path to config.yaml.",
     )
 
     return parser
 
 
-def main() -> None:
-    """Run the CLI."""
-    parser = build_parser()
-    args = parser.parse_args()
-
-    if not args.role_arn:
-        print("finops-pack CLI is set up.")
-        print("Pass --role-arn and --external-id to test assume-role.")
-        return
-
-    session = assume_role_session(
+def handle_run(args: argparse.Namespace) -> int:
+    """Handle the run subcommand."""
+    file_config = load_config(args.config)
+    resolved = merge_run_config(
+        file_config,
         role_arn=args.role_arn,
         external_id=args.external_id,
+        region=args.region,
         session_name=args.session_name,
-        region_name=args.region,
+        check_identity=args.check_identity,
     )
 
-    print("Successfully assumed role.")
+    session = assume_role_session(
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        region_name=resolved.region,
+    )
 
-    if args.check_identity:
+    print("Running finops-pack in AWS mode")
+    print(f"role_arn={resolved.role_arn}")
+    print(f"external_id={resolved.external_id}")
+    print(f"region={resolved.region}")
+    print(f"session_name={resolved.session_name}")
+
+    if resolved.check_identity:
         sts = session.client("sts")
         identity: dict[str, Any] = sts.get_caller_identity()
         print(json.dumps(identity, indent=2, default=str))
 
+    return 0
+
+
+def handle_demo(args: argparse.Namespace) -> int:
+    """Handle the demo subcommand."""
+    file_config = load_config(args.config)
+    fixture_dir = Path(file_config.demo_fixture_dir)
+
+    print("Running finops-pack in demo mode")
+    print(f"fixture_dir={fixture_dir}")
+
+    return 0
+
+
+def main() -> int:
+    """Run the CLI."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    try:
+        if args.command == "run":
+            return handle_run(args)
+        if args.command == "demo":
+            return handle_demo(args)
+
+        parser.error(f"Unknown command: {args.command}")
+        return 2
+    except Exception as exc:
+        print(f"Error: {exc}")
+        return 1
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
