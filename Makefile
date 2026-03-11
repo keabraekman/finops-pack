@@ -15,4 +15,4 @@ test:
 check: lint typecheck test
 
 run:
-	uv run python -m finops_pack.cli
+	uv run python -m finops_pack.cli demo
