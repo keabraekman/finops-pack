@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Read-only IAM role for finops-pack cross-account access.
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: finops-pack-readonly
+    Description: Name of the IAM role to create.
+  TrustedAccountId:
+    Type: String
+    AllowedPattern: '^\d{12}$'
+    ConstraintDescription: Must be a 12-digit AWS account ID.
+    Description: AWS account ID allowed to assume this role.
+  ExternalId:
+    Type: String
+    MinLength: 8
+    NoEcho: true
+    Description: External ID required when assuming the role.
+
+Resources:
+  FinOpsPackInventoryReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Read access for inventory and utilization data collected by finops-pack.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ReadInventoryAndUsage
+            Effect: Allow
+            Action:
+              - autoscaling:Describe*
+              - cloudwatch:Describe*
+              - cloudwatch:Get*
+              - cloudwatch:List*
+              - ec2:Describe*
+              - elasticloadbalancing:Describe*
+              - lambda:Get*
+              - lambda:List*
+              - rds:Describe*
+              - rds:ListTagsForResource
+              - s3:GetBucketLocation
+              - s3:GetBucketTagging
+              - s3:GetBucketVersioning
+              - s3:GetEncryptionConfiguration
+              - s3:GetLifecycleConfiguration
+              - s3:GetMetricsConfiguration
+              - s3:GetObject
+              - s3:GetObjectTagging
+              - s3:List*
+              - tag:GetResources
+              - tag:GetTagKeys
+              - tag:GetTagValues
+            Resource: "*"
+
+  FinOpsPackCostReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Read access for cost and billing signals used by finops-pack.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ReadCostAndBillingSignals
+            Effect: Allow
+            Action:
+              - ce:Describe*
+              - ce:Get*
+              - ce:List*
+              - cur:DescribeReportDefinitions
+              - pricing:DescribeServices
+              - pricing:GetAttributeValues
+              - pricing:GetProducts
+            Resource: "*"
+
+  FinOpsPackReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Read-only cross-account role for finops-pack.
+      ManagedPolicyArns:
+        - !Ref FinOpsPackInventoryReadPolicy
+        - !Ref FinOpsPackCostReadPolicy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowTrustedAccountWithExternalId
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${TrustedAccountId}:root
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+
+Outputs:
+  RoleArn:
+    Description: ARN of the read-only role for finops-pack.
+    Value: !GetAtt FinOpsPackReadOnlyRole.Arn
+  ExternalIdInstructions:
+    Description: Reminder for how to use the stack ExternalId when assuming the role.
+    Value: !Sub >
+      Assume this role only from account ${TrustedAccountId} and pass the same ExternalId
+      value that was supplied when this stack was created. Example:
+      finops-pack run --role-arn ${FinOpsPackReadOnlyRole.Arn} --external-id <your-external-id>
