@@ -1,7 +1,7 @@
 from finops_pack import Finding, Recommendation, Resource, SavingsRange
 
 
-def test_models_can_be_created():
+def test_models_can_be_created() -> None:
     savings = SavingsRange(monthly_low_usd=10.0, monthly_high_usd=25.0)
 
     resource = Resource(
@@ -28,6 +28,7 @@ def test_models_can_be_created():
         recommendation=recommendation,
     )
 
+    assert finding.recommendation.savings is not None
     assert finding.resource.service == "ec2"
     assert finding.recommendation.savings.monthly_low_usd == 10.0
     assert finding.recommendation.savings.annual_high_usd == 300.0

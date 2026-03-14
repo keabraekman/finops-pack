@@ -3,4 +3,5 @@ external_id: your-external-id-here
 region: us-east-1
 session_name: finops-pack
 check_identity: false
+enable_coh: false
 demo_fixture_dir: demo/fixtures

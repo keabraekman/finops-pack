@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.aws.cost_optimization_hub import enable_cost_optimization_hub
 from finops_pack.config import load_config, merge_run_config
 
 
@@ -49,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         help="Optional path to config.yaml.",
     )
+    run_parser.add_argument(
+        "--enable-coh",
+        action="store_true",
+        help=(
+            "Enable Cost Optimization Hub in the target account. "
+            "Requires extra IAM permissions."
+        ),
+    )
 
     demo_parser = subparsers.add_parser(
         "demo",
@@ -72,7 +81,10 @@ def handle_run(args: argparse.Namespace) -> int:
         region=args.region,
         session_name=args.session_name,
         check_identity=args.check_identity,
+        enable_coh=args.enable_coh,
     )
+    if resolved.role_arn is None:
+        raise RuntimeError("role_arn is required after config resolution.")
 
     session = assume_role_session(
         role_arn=resolved.role_arn,
@@ -86,11 +98,16 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"external_id={resolved.external_id}")
     print(f"region={resolved.region}")
     print(f"session_name={resolved.session_name}")
+    print(f"enable_coh={resolved.enable_coh}")
 
     if resolved.check_identity:
         sts = session.client("sts")
         identity: dict[str, Any] = sts.get_caller_identity()
         print(json.dumps(identity, indent=2, default=str))
+
+    if resolved.enable_coh:
+        status = enable_cost_optimization_hub(session, region_name=resolved.region)
+        print(f"cost_optimization_hub_status={status}")
 
     return 0
 

@@ -16,6 +16,7 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.region == "us-east-1"
     assert cfg.session_name == "finops-pack"
     assert cfg.check_identity is False
+    assert cfg.enable_coh is False
     assert cfg.demo_fixture_dir == "demo/fixtures"
 
 
@@ -29,6 +30,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "region: us-west-2",
                 "session_name: test-session",
                 "check_identity: true",
+                "enable_coh: true",
                 "demo_fixture_dir: demo/fixtures",
             ]
         ),
@@ -42,6 +44,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.region == "us-west-2"
     assert cfg.session_name == "test-session"
     assert cfg.check_identity is True
+    assert cfg.enable_coh is True
     assert cfg.demo_fixture_dir == "demo/fixtures"
 
 
@@ -52,6 +55,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         region="us-west-2",
         session_name="from-file",
         check_identity=False,
+        enable_coh=False,
         demo_fixture_dir="demo/fixtures",
     )
 
@@ -62,6 +66,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         region="eu-west-1",
         session_name="from-cli",
         check_identity=True,
+        enable_coh=True,
     )
 
     assert merged.role_arn == "arn:from:cli"
@@ -69,6 +74,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.region == "eu-west-1"
     assert merged.session_name == "from-cli"
     assert merged.check_identity is True
+    assert merged.enable_coh is True
 
 
 def test_merge_run_config_requires_role_arn() -> None:
@@ -82,4 +88,5 @@ def test_merge_run_config_requires_role_arn() -> None:
             region=None,
             session_name=None,
             check_identity=False,
+            enable_coh=False,
         )

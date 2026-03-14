@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 DEFAULT_CONFIG_FILES = ("config.yaml", "config.yml")
 
@@ -20,6 +20,7 @@ class AppConfig:
     region: str = "us-east-1"
     session_name: str = "finops-pack"
     check_identity: bool = False
+    enable_coh: bool = False
     demo_fixture_dir: str = "demo/fixtures"
 
 
@@ -31,6 +32,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "region",
         "session_name",
         "check_identity",
+        "enable_coh",
         "demo_fixture_dir",
     }
     unknown = set(data.keys()) - allowed
@@ -80,6 +82,7 @@ def merge_run_config(
     region: str | None,
     session_name: str | None,
     check_identity: bool,
+    enable_coh: bool,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
     merged = AppConfig(
@@ -88,6 +91,7 @@ def merge_run_config(
         region=region if region is not None else file_config.region,
         session_name=session_name if session_name is not None else file_config.session_name,
         check_identity=check_identity or file_config.check_identity,
+        enable_coh=enable_coh or file_config.enable_coh,
         demo_fixture_dir=file_config.demo_fixture_dir,
     )
 

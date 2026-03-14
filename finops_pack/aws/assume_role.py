@@ -2,29 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 
-def assume_role_session(
+class AssumedRoleCredentials(TypedDict):
+    """Temporary AWS credentials returned from STS AssumeRole."""
+
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_session_token: str
+
+
+def assume_role(
     role_arn: str,
     external_id: str | None = None,
     session_name: str = "finops-pack",
     region_name: str = "us-east-1",
-) -> boto3.Session:
+) -> AssumedRoleCredentials:
     """
-    Assume an IAM role and return a boto3 Session using temporary credentials.
+    Assume an IAM role and return temporary credentials.
 
     Args:
         role_arn: ARN of the role to assume.
         external_id: Optional external ID required by the target account.
         session_name: STS session name.
-        region_name: AWS region for the returned session.
+        region_name: AWS region for the STS client.
 
     Returns:
-        A boto3 Session authenticated with temporary assumed-role credentials.
+        Temporary AWS credentials for the assumed role.
 
     Raises:
         RuntimeError: If STS AssumeRole fails or returns incomplete credentials.
@@ -48,9 +56,42 @@ def assume_role_session(
     if not credentials:
         raise RuntimeError("AssumeRole response did not include credentials.")
 
-    return boto3.Session(
-        aws_access_key_id=credentials["AccessKeyId"],
-        aws_secret_access_key=credentials["SecretAccessKey"],
-        aws_session_token=credentials["SessionToken"],
+    try:
+        return {
+            "aws_access_key_id": credentials["AccessKeyId"],
+            "aws_secret_access_key": credentials["SecretAccessKey"],
+            "aws_session_token": credentials["SessionToken"],
+        }
+    except KeyError as exc:
+        raise RuntimeError("AssumeRole response did not include complete credentials.") from exc
+
+
+def assume_role_session(
+    role_arn: str,
+    external_id: str | None = None,
+    session_name: str = "finops-pack",
+    region_name: str = "us-east-1",
+) -> boto3.Session:
+    """
+    Assume an IAM role and return a boto3 Session using temporary credentials.
+
+    Args:
+        role_arn: ARN of the role to assume.
+        external_id: Optional external ID required by the target account.
+        session_name: STS session name.
+        region_name: AWS region for the returned session.
+
+    Returns:
+        A boto3 Session authenticated with temporary assumed-role credentials.
+
+    Raises:
+        RuntimeError: If STS AssumeRole fails or returns incomplete credentials.
+    """
+    credentials = assume_role(
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
         region_name=region_name,
     )
+
+    return boto3.Session(region_name=region_name, **credentials)
