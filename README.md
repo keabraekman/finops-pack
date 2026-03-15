@@ -44,6 +44,30 @@ AllowCostOptimizationHubEnrollment=true
 
 That optional policy grants `cost-optimization-hub:UpdateEnrollmentStatus` plus the IAM permissions AWS requires to create the `AWSServiceRoleForCostOptimizationHub` service-linked role.
 
+## Required billing prerequisites
+
+- Use the AWS Organizations management account when you need organization-wide billing visibility. AWS Billing and Cost Management gives the management account access to its own charges plus member-account charges, while member accounts only see their own cost and usage data.
+- Cost Optimization Hub must be opted in before account recommendations appear. `finops-pack run --enable-coh` can perform the single-account opt-in path if the target role includes the optional COH permissions.
+
+## Known limits
+
+- Cost Explorer resource-level daily data is opt-in and must be enabled in Billing and Cost Management preferences before you can query it.
+- Cost Explorer resource-level daily data only covers the last 14 days.
+
+## IAM policy templates
+
+Starter IAM templates live in `iam/`:
+
+- `iam/policy-min.json` is the baseline starting point.
+- `iam/policy-full.json` adds the optional Cost Optimization Hub enrollment permissions.
+
+The `iam-policy` CLI is a stub today. It emits one of those bundled templates and will later narrow actions based on enabled finops-pack modules.
+
+```bash
+uv run finops-pack iam-policy --mode min
+uv run finops-pack iam-policy --mode full --output /tmp/finops-pack-policy.json
+```
+
 ## Running against AWS
 
 You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` for the supported keys.

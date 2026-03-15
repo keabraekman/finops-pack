@@ -1,4 +1,5 @@
 import argparse
+import json
 import subprocess
 import sys
 from unittest.mock import Mock
@@ -26,6 +27,23 @@ def test_run_requires_role_arn() -> None:
     )
     assert result.returncode == 1
     assert "role_arn is required" in result.stdout
+
+
+def test_iam_policy_command_prints_policy_json() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "finops_pack", "iam-policy", "--mode", "full"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    policy = json.loads(result.stdout)
+    actions = {
+        action
+        for statement in policy["Statement"]
+        for action in statement["Action"]
+    }
+    assert "cost-optimization-hub:UpdateEnrollmentStatus" in actions
 
 
 def test_handle_run_enables_cost_optimization_hub(

@@ -235,6 +235,7 @@ Likely future additions:
 
 - more collectors and analyzers
 - richer CUR-based savings estimates
+- IAM policy generation that narrows permissions to enabled modules
 - suppression / ignore rules
 - severity levels
 - account tagging and grouping

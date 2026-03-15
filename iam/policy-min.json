@@ -1,0 +1,48 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadInventoryAndUsage",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:Describe*",
+        "cloudwatch:Describe*",
+        "cloudwatch:Get*",
+        "cloudwatch:List*",
+        "ec2:Describe*",
+        "elasticloadbalancing:Describe*",
+        "lambda:Get*",
+        "lambda:List*",
+        "rds:Describe*",
+        "rds:ListTagsForResource",
+        "s3:GetBucketLocation",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetMetricsConfiguration",
+        "s3:GetObject",
+        "s3:GetObjectTagging",
+        "s3:List*",
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadCostAndBillingSignals",
+      "Effect": "Allow",
+      "Action": [
+        "ce:Describe*",
+        "ce:Get*",
+        "ce:List*",
+        "cur:DescribeReportDefinitions",
+        "pricing:DescribeServices",
+        "pricing:GetAttributeValues",
+        "pricing:GetProducts"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

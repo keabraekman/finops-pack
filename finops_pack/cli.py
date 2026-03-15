@@ -10,6 +10,7 @@ from typing import Any
 from finops_pack.aws.assume_role import assume_role_session
 from finops_pack.aws.cost_optimization_hub import enable_cost_optimization_hub
 from finops_pack.config import load_config, merge_run_config
+from finops_pack.iam_policy_generator import render_policy, write_policy
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +69,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to config.yaml.",
     )
 
+    policy_parser = subparsers.add_parser(
+        "iam-policy",
+        help="Emit a starter IAM policy JSON document.",
+    )
+    policy_parser.add_argument(
+        "--mode",
+        choices=("min", "full"),
+        default="min",
+        help="Template variant to emit (default: min).",
+    )
+    policy_parser.add_argument(
+        "--output",
+        help="Optional file path to write the generated policy JSON.",
+    )
+
     return parser
 
 
@@ -123,6 +139,17 @@ def handle_demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_iam_policy(args: argparse.Namespace) -> int:
+    """Handle the iam-policy subcommand."""
+    if args.output:
+        output_path = write_policy(args.mode, args.output)
+        print(f"wrote_policy={output_path}")
+        return 0
+
+    print(render_policy(args.mode), end="")
+    return 0
+
+
 def main() -> int:
     """Run the CLI."""
     parser = build_parser()
@@ -133,6 +160,8 @@ def main() -> int:
             return handle_run(args)
         if args.command == "demo":
             return handle_demo(args)
+        if args.command == "iam-policy":
+            return handle_iam_policy(args)
 
         parser.error(f"Unknown command: {args.command}")
         return 2
