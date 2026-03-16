@@ -40,6 +40,26 @@ class Resource:
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
+class AccountRecord:
+    account_id: str
+    name: str
+    email: str | None = None
+    status: str = "ACTIVE"
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class AccountMapEntry:
+    account_id: str
+    name: str
+    email: str | None = None
+    status: str = "ACTIVE"
+    environment: Literal["prod", "nonprod", "unknown"] = "unknown"
+    confidence: Literal["high", "medium", "low"] = "low"
+    classification_source: Literal["config", "regex", "default"] = "default"
+    classification_reason: str = "No classification rule matched."
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
 class Recommendation:
     code: str
     title: str

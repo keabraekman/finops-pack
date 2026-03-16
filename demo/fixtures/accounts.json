@@ -1,0 +1,26 @@
+[
+  {
+    "account_id": "111111111111",
+    "name": "prod-core",
+    "email": "prod-core@example.com",
+    "status": "ACTIVE"
+  },
+  {
+    "account_id": "222222222222",
+    "name": "sandbox-apps",
+    "email": "sandbox-apps@example.com",
+    "status": "ACTIVE"
+  },
+  {
+    "account_id": "333333333333",
+    "name": "shared-services",
+    "email": "shared-services@example.com",
+    "status": "ACTIVE"
+  },
+  {
+    "account_id": "444444444444",
+    "name": "nonprod-analytics",
+    "email": "nonprod-analytics@example.com",
+    "status": "ACTIVE"
+  }
+]

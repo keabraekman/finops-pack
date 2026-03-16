@@ -4,4 +4,7 @@ region: us-east-1
 session_name: finops-pack
 check_identity: false
 enable_coh: false
+output_dir: output
 demo_fixture_dir: demo/fixtures
+prod_account_ids: []
+nonprod_account_ids: []

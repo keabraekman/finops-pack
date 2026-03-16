@@ -20,6 +20,7 @@ uv run ruff format .
 uv run mypy .
 uv run pytest
 uv run finops-pack demo
+uv run finops-pack run --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly --external-id replace-me
 ```
 
 ## AWS setup
@@ -78,6 +79,7 @@ uv run finops-pack run \
 
 - Cost Explorer resource-level daily data is opt-in and must be enabled in Billing and Cost Management preferences before you can query it.
 - Cost Explorer resource-level daily data only covers the last 14 days.
+- AWS Organizations inventory collection requires `organizations:ListAccounts` in the account where `finops-pack` runs.
 
 ## IAM policy templates
 
@@ -114,8 +116,14 @@ uv run finops-pack run \
   --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly \
   --external-id replace-me \
   --region us-east-1 \
-  --check-identity
+  --check-identity \
+  --output-dir output
 ```
+
+Successful runs now write:
+
+- `output/accounts.json`: normalized account inventory plus prod/nonprod classification metadata
+- `output/dashboard.html`: HTML dashboard with an Account Map section
 
 ## Optional: enable Cost Optimization Hub
 

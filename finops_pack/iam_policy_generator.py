@@ -22,6 +22,7 @@ BASE_POLICY_STATEMENTS: list[dict[str, Any]] = [
             "elasticloadbalancing:Describe*",
             "lambda:Get*",
             "lambda:List*",
+            "organizations:ListAccounts",
             "rds:Describe*",
             "rds:ListTagsForResource",
             "s3:GetBucketLocation",
@@ -65,9 +66,7 @@ OPTIONAL_FEATURE_STATEMENTS: list[dict[str, Any]] = [
             "cost-optimization-hub.bcm.amazonaws.com/AWSServiceRoleForCostOptimizationHub"
         ),
         "Condition": {
-            "StringLike": {
-                "iam:AWSServiceName": "cost-optimization-hub.bcm.amazonaws.com"
-            }
+            "StringLike": {"iam:AWSServiceName": "cost-optimization-hub.bcm.amazonaws.com"}
         },
     },
     {

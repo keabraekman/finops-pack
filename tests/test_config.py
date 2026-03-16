@@ -17,7 +17,10 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.session_name == "finops-pack"
     assert cfg.check_identity is False
     assert cfg.enable_coh is False
+    assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.prod_account_ids == []
+    assert cfg.nonprod_account_ids == []
 
 
 def test_load_config_from_yaml(tmp_path: Path) -> None:
@@ -31,7 +34,12 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "session_name: test-session",
                 "check_identity: true",
                 "enable_coh: true",
+                "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
+                "prod_account_ids:",
+                "  - '123456789012'",
+                "nonprod_account_ids:",
+                "  - '210987654321'",
             ]
         ),
         encoding="utf-8",
@@ -45,7 +53,10 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.session_name == "test-session"
     assert cfg.check_identity is True
     assert cfg.enable_coh is True
+    assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.prod_account_ids == ["123456789012"]
+    assert cfg.nonprod_account_ids == ["210987654321"]
 
 
 def test_merge_run_config_prefers_cli_values() -> None:
@@ -56,7 +67,10 @@ def test_merge_run_config_prefers_cli_values() -> None:
         session_name="from-file",
         check_identity=False,
         enable_coh=False,
+        output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
+        prod_account_ids=["111111111111"],
+        nonprod_account_ids=["222222222222"],
     )
 
     merged = merge_run_config(
@@ -67,6 +81,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         session_name="from-cli",
         check_identity=True,
         enable_coh=True,
+        output_dir="from-cli-output",
     )
 
     assert merged.role_arn == "arn:from:cli"
@@ -75,6 +90,9 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.session_name == "from-cli"
     assert merged.check_identity is True
     assert merged.enable_coh is True
+    assert merged.output_dir == "from-cli-output"
+    assert merged.prod_account_ids == ["111111111111"]
+    assert merged.nonprod_account_ids == ["222222222222"]
 
 
 def test_merge_run_config_requires_role_arn() -> None:
@@ -89,4 +107,23 @@ def test_merge_run_config_requires_role_arn() -> None:
             session_name=None,
             check_identity=False,
             enable_coh=False,
+            output_dir=None,
         )
+
+
+def test_load_config_rejects_overlapping_account_override_lists(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "prod_account_ids:",
+                "  - '123456789012'",
+                "nonprod_account_ids:",
+                "  - '123456789012'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cannot overlap"):
+        load_config(str(config_file))

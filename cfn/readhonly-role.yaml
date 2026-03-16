@@ -52,6 +52,7 @@ Resources:
               - elasticloadbalancing:Describe*
               - lambda:Get*
               - lambda:List*
+              - organizations:ListAccounts
               - rds:Describe*
               - rds:ListTagsForResource
               - s3:GetBucketLocation

@@ -34,26 +34,48 @@
       </header>
 
       <section class="summary-grid">
-        <article class="summary-card">
-          <p class="summary-label">Total Findings</p>
-          <p class="summary-value">{{ findings|length if findings else 0 }}</p>
-        </article>
+        {% if account_map is defined %}
+          <article class="summary-card">
+            <p class="summary-label">Total Accounts</p>
+            <p class="summary-value">{{ account_map.total }}</p>
+          </article>
 
-        <article class="summary-card">
-          <p class="summary-label">Recommendations</p>
-          <p class="summary-value">{{ recommendations|length if recommendations else 0 }}</p>
-        </article>
+          <article class="summary-card">
+            <p class="summary-label">Prod</p>
+            <p class="summary-value">{{ account_map.prod|length }}</p>
+          </article>
 
-        <article class="summary-card">
-          <p class="summary-label">Estimated Monthly Savings</p>
-          <p class="summary-value">
-            {% if estimated_monthly_savings is defined %}
-              ${{ "%.2f"|format(estimated_monthly_savings) }}
-            {% else %}
-              TBD
-            {% endif %}
-          </p>
-        </article>
+          <article class="summary-card">
+            <p class="summary-label">Non-Prod</p>
+            <p class="summary-value">{{ account_map.nonprod|length }}</p>
+          </article>
+
+          <article class="summary-card">
+            <p class="summary-label">Needs Review</p>
+            <p class="summary-value">{{ account_map.unknown|length }}</p>
+          </article>
+        {% else %}
+          <article class="summary-card">
+            <p class="summary-label">Total Findings</p>
+            <p class="summary-value">{{ findings|length if findings else 0 }}</p>
+          </article>
+
+          <article class="summary-card">
+            <p class="summary-label">Recommendations</p>
+            <p class="summary-value">{{ recommendations|length if recommendations else 0 }}</p>
+          </article>
+
+          <article class="summary-card">
+            <p class="summary-label">Estimated Monthly Savings</p>
+            <p class="summary-value">
+              {% if estimated_monthly_savings is defined %}
+                ${{ "%.2f"|format(estimated_monthly_savings) }}
+              {% else %}
+                TBD
+              {% endif %}
+            </p>
+          </article>
+        {% endif %}
       </section>
 
       <section class="section">
@@ -65,83 +87,173 @@
         </div>
       </section>
 
-      <section class="section">
-        <h2>Findings</h2>
+      {% if account_map is defined %}
+        <section class="section">
+          <h2>Account Map</h2>
 
-        {% if findings %}
-          <div class="stack">
-            {% for finding in findings %}
-              <article class="card finding-card">
-                <div class="card-header">
-                  <h3>{{ finding.title }}</h3>
-                  {% if finding.severity %}
-                    <span class="badge badge-{{ finding.severity|lower }}">{{ finding.severity }}</span>
-                  {% endif %}
+          <div class="account-map-grid">
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Production</h3>
+                <span class="group-count">{{ account_map.prod|length }}</span>
+              </div>
+
+              {% if account_map.prod %}
+                <div class="account-list">
+                  {% for account in account_map.prod %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
+                      </div>
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
                 </div>
+              {% else %}
+                <p class="empty-note">No prod accounts classified yet.</p>
+              {% endif %}
+            </article>
 
-                {% if finding.description %}
-                  <p>{{ finding.description }}</p>
-                {% endif %}
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Non-Production</h3>
+                <span class="group-count">{{ account_map.nonprod|length }}</span>
+              </div>
 
-                {% if finding.resource_id or finding.resource_type %}
-                  <div class="kv-grid">
-                    {% if finding.resource_type %}
-                      <div>
-                        <span class="kv-label">Resource Type</span>
-                        <div class="kv-value">{{ finding.resource_type }}</div>
+              {% if account_map.nonprod %}
+                <div class="account-list">
+                  {% for account in account_map.nonprod %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
                       </div>
-                    {% endif %}
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="empty-note">No non-prod accounts classified yet.</p>
+              {% endif %}
+            </article>
 
-                    {% if finding.resource_id %}
-                      <div>
-                        <span class="kv-label">Resource ID</span>
-                        <div class="kv-value">{{ finding.resource_id }}</div>
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Needs Review</h3>
+                <span class="group-count">{{ account_map.unknown|length }}</span>
+              </div>
+
+              {% if account_map.unknown %}
+                <div class="account-list">
+                  {% for account in account_map.unknown %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
                       </div>
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="empty-note">No review queue right now.</p>
+              {% endif %}
+            </article>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if show_findings_section is not defined or show_findings_section %}
+        <section class="section">
+          <h2>Findings</h2>
+
+          {% if findings %}
+            <div class="stack">
+              {% for finding in findings %}
+                <article class="card finding-card">
+                  <div class="card-header">
+                    <h3>{{ finding.title }}</h3>
+                    {% if finding.severity %}
+                      <span class="badge badge-{{ finding.severity|lower }}">{{ finding.severity }}</span>
                     {% endif %}
                   </div>
-                {% endif %}
 
-                {% if finding.estimated_monthly_savings is defined and finding.estimated_monthly_savings is not none %}
-                  <p class="savings">
-                    Estimated monthly savings:
-                    <strong>${{ "%.2f"|format(finding.estimated_monthly_savings) }}</strong>
-                  </p>
-                {% endif %}
-              </article>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="card empty-state">
-            <p>No findings yet.</p>
-          </div>
-        {% endif %}
-      </section>
+                  {% if finding.description %}
+                    <p>{{ finding.description }}</p>
+                  {% endif %}
 
-      <section class="section">
-        <h2>Recommendations</h2>
+                  {% if finding.resource_id or finding.resource_type %}
+                    <div class="kv-grid">
+                      {% if finding.resource_type %}
+                        <div>
+                          <span class="kv-label">Resource Type</span>
+                          <div class="kv-value">{{ finding.resource_type }}</div>
+                        </div>
+                      {% endif %}
 
-        {% if recommendations %}
-          <div class="stack">
-            {% for recommendation in recommendations %}
-              <article class="card">
-                <h3>{{ recommendation.title }}</h3>
+                      {% if finding.resource_id %}
+                        <div>
+                          <span class="kv-label">Resource ID</span>
+                          <div class="kv-value">{{ finding.resource_id }}</div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
 
-                {% if recommendation.description %}
-                  <p>{{ recommendation.description }}</p>
-                {% endif %}
+                  {% if finding.estimated_monthly_savings is defined and finding.estimated_monthly_savings is not none %}
+                    <p class="savings">
+                      Estimated monthly savings:
+                      <strong>${{ "%.2f"|format(finding.estimated_monthly_savings) }}</strong>
+                    </p>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card empty-state">
+              <p>No findings yet.</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
 
-                {% if recommendation.action %}
-                  <p><strong>Suggested action:</strong> {{ recommendation.action }}</p>
-                {% endif %}
-              </article>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="card empty-state">
-            <p>No recommendations yet.</p>
-          </div>
-        {% endif %}
-      </section>
+      {% if show_recommendations_section is not defined or show_recommendations_section %}
+        <section class="section">
+          <h2>Recommendations</h2>
+
+          {% if recommendations %}
+            <div class="stack">
+              {% for recommendation in recommendations %}
+                <article class="card">
+                  <h3>{{ recommendation.title }}</h3>
+
+                  {% if recommendation.description %}
+                    <p>{{ recommendation.description }}</p>
+                  {% endif %}
+
+                  {% if recommendation.action %}
+                    <p><strong>Suggested action:</strong> {{ recommendation.action }}</p>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card empty-state">
+              <p>No recommendations yet.</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
     </div>
   </body>
 </html>

@@ -7,10 +7,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.aws.assume_role import assume_role_session
 from finops_pack.aws.cost_optimization_hub import enable_cost_optimization_hub
+from finops_pack.collectors.organizations import list_accounts, load_account_records
 from finops_pack.config import load_config, merge_run_config
 from finops_pack.iam_policy_generator import render_policy, write_policy
+from finops_pack.models import AccountMapEntry
+from finops_pack.render.dashboard import write_dashboard
+from finops_pack.render.exporters import JsonExporter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,11 +57,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional path to config.yaml.",
     )
     run_parser.add_argument(
+        "--output-dir",
+        help="Directory where generated reports and JSON artifacts are written.",
+    )
+    run_parser.add_argument(
         "--enable-coh",
         action="store_true",
         help=(
-            "Enable Cost Optimization Hub in the target account. "
-            "Requires extra IAM permissions."
+            "Enable Cost Optimization Hub in the target account. Requires extra IAM permissions."
         ),
     )
 
@@ -67,6 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     demo_parser.add_argument(
         "--config",
         help="Optional path to config.yaml.",
+    )
+    demo_parser.add_argument(
+        "--output-dir",
+        help="Directory where generated demo artifacts are written.",
     )
 
     policy_parser = subparsers.add_parser(
@@ -87,6 +99,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_account_outputs(
+    account_map: list[AccountMapEntry],
+    *,
+    output_dir: Path,
+    region: str,
+    account_id: str,
+) -> tuple[Path, Path]:
+    """Write JSON and HTML artifacts for classified accounts."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    accounts_path = output_dir / "accounts.json"
+    dashboard_path = output_dir / "dashboard.html"
+
+    JsonExporter().export(account_map, accounts_path)
+    write_dashboard(account_map, dashboard_path, account_id=account_id, region=region)
+
+    return accounts_path, dashboard_path
+
+
 def handle_run(args: argparse.Namespace) -> int:
     """Handle the run subcommand."""
     file_config = load_config(args.config)
@@ -98,6 +129,7 @@ def handle_run(args: argparse.Namespace) -> int:
         session_name=args.session_name,
         check_identity=args.check_identity,
         enable_coh=args.enable_coh,
+        output_dir=args.output_dir,
     )
     if resolved.role_arn is None:
         raise RuntimeError("role_arn is required after config resolution.")
@@ -125,6 +157,22 @@ def handle_run(args: argparse.Namespace) -> int:
         status = enable_cost_optimization_hub(session, region_name=resolved.region)
         print(f"cost_optimization_hub_status={status}")
 
+    account_records = list_accounts(session)
+    account_map = classify_accounts(
+        account_records,
+        prod_account_ids=resolved.prod_account_ids,
+        nonprod_account_ids=resolved.nonprod_account_ids,
+    )
+    accounts_path, dashboard_path = _write_account_outputs(
+        account_map,
+        output_dir=Path(resolved.output_dir),
+        region=resolved.region,
+        account_id="AWS Organizations",
+    )
+    print(f"account_count={len(account_map)}")
+    print(f"accounts_path={accounts_path}")
+    print(f"dashboard_path={dashboard_path}")
+
     return 0
 
 
@@ -132,9 +180,25 @@ def handle_demo(args: argparse.Namespace) -> int:
     """Handle the demo subcommand."""
     file_config = load_config(args.config)
     fixture_dir = Path(file_config.demo_fixture_dir)
+    output_dir = Path(args.output_dir or file_config.output_dir)
+    account_records = load_account_records(fixture_dir / "accounts.json")
+    account_map = classify_accounts(
+        account_records,
+        prod_account_ids=file_config.prod_account_ids,
+        nonprod_account_ids=file_config.nonprod_account_ids,
+    )
+    accounts_path, dashboard_path = _write_account_outputs(
+        account_map,
+        output_dir=output_dir,
+        region=file_config.region,
+        account_id="Demo Fixture",
+    )
 
     print("Running finops-pack in demo mode")
     print(f"fixture_dir={fixture_dir}")
+    print(f"account_count={len(account_map)}")
+    print(f"accounts_path={accounts_path}")
+    print(f"dashboard_path={dashboard_path}")
 
     return 0
 

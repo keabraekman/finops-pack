@@ -13,11 +13,7 @@ from finops_pack.iam_policy_generator import (
 
 
 def _collect_actions(policy: dict[str, Any]) -> set[str]:
-    return {
-        action
-        for statement in policy["Statement"]
-        for action in statement["Action"]
-    }
+    return {action for statement in policy["Statement"] for action in statement["Action"]}
 
 
 @pytest.mark.parametrize("mode", ["min", "full"])
@@ -29,6 +25,7 @@ def test_generate_policy_full_adds_optional_permissions() -> None:
     min_actions = _collect_actions(generate_policy("min"))
     full_actions = _collect_actions(generate_policy("full"))
 
+    assert "organizations:ListAccounts" in min_actions
     assert "cost-optimization-hub:UpdateEnrollmentStatus" not in min_actions
     assert "cost-optimization-hub:UpdateEnrollmentStatus" in full_actions
     assert "iam:CreateServiceLinkedRole" in full_actions

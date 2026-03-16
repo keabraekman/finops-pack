@@ -120,7 +120,7 @@ h3 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
   margin-bottom: 28px;
 }
@@ -204,6 +204,88 @@ h3 {
   color: var(--muted);
 }
 
+.account-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.account-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  font-weight: 700;
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-item {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+.account-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-name {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.account-meta,
+.account-reason,
+.empty-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.account-meta {
+  font-size: 0.88rem;
+}
+
+.account-reason {
+  margin-top: 10px;
+  font-size: 0.92rem;
+}
+
+.confidence-high {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.confidence-medium {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.confidence-low {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 @media (max-width: 800px) {
   .page-header {
     flex-direction: column;
@@ -214,6 +296,7 @@ h3 {
     min-width: 0;
   }
 
+  .account-map-grid,
   .summary-grid,
   .kv-grid {
     grid-template-columns: 1fr;
