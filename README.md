@@ -44,6 +44,31 @@ AllowCostOptimizationHubEnrollment=true
 
 That optional policy grants `cost-optimization-hub:UpdateEnrollmentStatus` plus the IAM permissions AWS requires to create the `AWSServiceRoleForCostOptimizationHub` service-linked role.
 
+## Trust policy notes
+
+- `TrustedAccountId` should be the specific service or provider account that runs `finops-pack`, not a broad wildcard trust.
+- `ExternalId` is the cross-account confused-deputy safeguard for multi-tenant access. Use a unique value per customer, tenant, or workspace instead of reusing one shared value everywhere.
+- AWS does not treat `ExternalId` as a secret because principals that can view the role can also see the condition. Treat it as a unique identifier under your control, not a password.
+- Every `AssumeRole` call must pass the exact same `ExternalId` value that was set when the stack was created, or STS denies the request.
+
+## Manual smoke test
+
+If you want to validate the role in a test account or org, use a unique test `ExternalId` and check both the success and failure paths:
+
+```bash
+# positive path: matching ExternalId should succeed
+uv run finops-pack run \
+  --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly \
+  --external-id your-test-external-id \
+  --check-identity
+
+# negative path: wrong ExternalId should fail
+uv run finops-pack run \
+  --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly \
+  --external-id wrong-external-id \
+  --check-identity
+```
+
 ## Required billing prerequisites
 
 - Use the AWS Organizations management account when you need organization-wide billing visibility. AWS Billing and Cost Management gives the management account access to its own charges plus member-account charges, while member accounts only see their own cost and usage data.
@@ -67,6 +92,18 @@ The `iam-policy` CLI is a stub today. It emits one of those bundled templates an
 uv run finops-pack iam-policy --mode min
 uv run finops-pack iam-policy --mode full --output /tmp/finops-pack-policy.json
 ```
+
+## Minimal permissions today
+
+Based on the commands currently implemented in this repo, the narrowest target-role permissions are:
+
+- No identity-policy permissions are required just to assume the role and run `--check-identity`; the gate is the trust policy, and `sts:GetCallerIdentity` is permissionless.
+- If you use `--enable-coh`, add only these extra permissions:
+  - `cost-optimization-hub:UpdateEnrollmentStatus`
+  - `iam:CreateServiceLinkedRole` for `cost-optimization-hub.bcm.amazonaws.com`
+  - `iam:PutRolePolicy` on `AWSServiceRoleForCostOptimizationHub`
+
+The checked-in CloudFormation template and starter IAM JSON files are still broader because they are scaffolding for future collectors and billing reads.
 
 ## Running against AWS
 

@@ -19,12 +19,16 @@ Parameters:
     Type: String
     AllowedPattern: '^\d{12}$'
     ConstraintDescription: Must be a 12-digit AWS account ID.
-    Description: AWS account ID allowed to assume this role.
+    Description: >
+      AWS account ID allowed to assume this role. In multi-tenant deployments,
+      this should be the provider or service account that runs finops-pack.
   ExternalId:
     Type: String
     MinLength: 8
     NoEcho: true
-    Description: External ID required when assuming the role.
+    Description: >
+      Unique per customer or workspace ExternalId required when assuming the role.
+      This mitigates confused deputy risk in multi-tenant cross-account access.
 
 Conditions:
   AllowCohEnrollment: !Equals [!Ref AllowCostOptimizationHubEnrollment, "true"]
@@ -125,6 +129,9 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
+          # ExternalId helps prevent the confused deputy problem. The trusted party
+          # should generate a unique value per customer or workspace and pass that
+          # same value on every AssumeRole call.
           - Sid: AllowTrustedAccountWithExternalId
             Effect: Allow
             Principal:
@@ -139,9 +146,9 @@ Outputs:
     Description: ARN of the cross-account role for finops-pack.
     Value: !GetAtt FinOpsPackReadOnlyRole.Arn
   ExternalIdInstructions:
-    Description: Reminder for how to use the stack ExternalId when assuming the role.
+    Description: Reminder for how to use ExternalId when assuming the role.
     Value: !Sub >
-      Assume this role only from account ${TrustedAccountId} and pass the same ExternalId
-      value that was supplied when this stack was created. Example:
+      Use a unique ExternalId per customer or workspace and pass the same value
+      on every AssumeRole request from account ${TrustedAccountId}. Example:
       finops-pack run --role-arn ${FinOpsPackReadOnlyRole.Arn} --external-id <your-external-id>
       [--enable-coh]
