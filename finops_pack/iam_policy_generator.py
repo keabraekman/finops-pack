@@ -47,6 +47,7 @@ BASE_POLICY_STATEMENTS: list[dict[str, Any]] = [
             "ce:Describe*",
             "ce:Get*",
             "ce:List*",
+            "cost-optimization-hub:ListEnrollmentStatuses",
             "cur:DescribeReportDefinitions",
             "pricing:DescribeServices",
             "pricing:GetAttributeValues",

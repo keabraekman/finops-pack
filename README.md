@@ -74,6 +74,7 @@ uv run finops-pack run \
 
 - Use the AWS Organizations management account when you need organization-wide billing visibility. AWS Billing and Cost Management gives the management account access to its own charges plus member-account charges, while member accounts only see their own cost and usage data.
 - Cost Optimization Hub must be opted in before account recommendations appear. `finops-pack run --enable-coh` can perform the single-account opt-in path if the target role includes the optional COH permissions.
+- Successful runs include an access report that best-effort checks COH enrollment, Cost Explorer readiness, and Cost Explorer resource-level daily data readiness. Modules with missing prerequisites are marked `DEGRADED` with the reason surfaced in both CLI output and the dashboard.
 
 ## Known limits
 
@@ -104,12 +105,15 @@ Based on the commands currently implemented in this repo, the narrowest target-r
   - `cost-optimization-hub:UpdateEnrollmentStatus`
   - `iam:CreateServiceLinkedRole` for `cost-optimization-hub.bcm.amazonaws.com`
   - `iam:PutRolePolicy` on `AWSServiceRoleForCostOptimizationHub`
+- Baseline read access now also includes `cost-optimization-hub:ListEnrollmentStatuses` so finops-pack can report whether COH is already enabled.
 
 The checked-in CloudFormation template and starter IAM JSON files are still broader because they are scaffolding for future collectors and billing reads.
 
 ## Running against AWS
 
 You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` for the supported keys.
+
+`regions` is an optional fixed region coverage list. If you set it, include the primary `region` in that list. finops-pack reports this as `region_discovery_strategy=fixed` and carries the list into `access_report.json` and the dashboard.
 
 ```bash
 uv run finops-pack run \
@@ -123,6 +127,7 @@ uv run finops-pack run \
 Successful runs now write:
 
 - `output/accounts.json`: normalized account inventory plus prod/nonprod classification metadata
+- `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
 - `output/dashboard.html`: HTML dashboard with an Account Map section
 
 ## Optional: enable Cost Optimization Hub

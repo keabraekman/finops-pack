@@ -87,6 +87,88 @@
         </div>
       </section>
 
+      {% if access_report and access_report.region_coverage %}
+        <section class="section">
+          <h2>Region Coverage</h2>
+          <div class="card">
+            <div class="kv-grid">
+              <div>
+                <span class="kv-label">Strategy</span>
+                <div class="kv-value">{{ access_report.region_coverage.strategy }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Primary Region</span>
+                <div class="kv-value">{{ access_report.region_coverage.primary_region }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Covered Regions</span>
+                <div class="kv-value">{{ access_report.region_coverage.regions|join(", ") }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Coverage Count</span>
+                <div class="kv-value">{{ access_report.region_coverage.regions|length }}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if access_report %}
+        <section class="section">
+          <h2>Access Report</h2>
+
+          {% if access_report.checks %}
+            <div class="access-grid">
+              {% for check in access_report.checks %}
+                <article class="card">
+                  <div class="card-header">
+                    <h3>{{ check.label }}</h3>
+                    <span class="badge {{ 'badge-low' if check.status == 'ACTIVE' else 'badge-medium' }}">{{ check.status }}</span>
+                  </div>
+                  <p class="status-line">
+                    Enabled:
+                    <strong>
+                      {% if check.enabled is sameas true %}
+                        Yes
+                      {% elif check.enabled is sameas false %}
+                        No
+                      {% else %}
+                        Unknown
+                      {% endif %}
+                    </strong>
+                  </p>
+                  <p class="status-note">{{ check.reason }}</p>
+                  <p class="status-meta">Checked via {{ check.checked_in_region }}</p>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card">
+              <p class="empty-note">Demo mode does not query live AWS prerequisite status.</p>
+            </div>
+          {% endif %}
+
+          {% if access_report.modules %}
+            <div class="card">
+              <div class="card-header">
+                <h3>Module Readiness</h3>
+              </div>
+              <div class="module-list">
+                {% for module in access_report.modules %}
+                  <div class="module-item">
+                    <div class="module-heading">
+                      <span>{{ module.label }}</span>
+                      <span class="badge {{ 'badge-low' if module.status == 'ACTIVE' else 'badge-medium' }}">{{ module.status }}</span>
+                    </div>
+                    <p class="status-note">{{ module.reason }}</p>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
       {% if account_map is defined %}
         <section class="section">
           <h2>Account Map</h2>

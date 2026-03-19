@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from finops_pack.config import AppConfig, load_config, merge_run_config
+from finops_pack.config import AppConfig, load_config, merge_run_config, resolve_regions
 
 
 def test_load_config_returns_defaults_when_missing(
@@ -14,6 +14,7 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.role_arn is None
     assert cfg.external_id is None
     assert cfg.region == "us-east-1"
+    assert cfg.regions == []
     assert cfg.session_name == "finops-pack"
     assert cfg.check_identity is False
     assert cfg.enable_coh is False
@@ -31,6 +32,9 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "role_arn: arn:aws:iam::123456789012:role/TestRole",
                 "external_id: abc123",
                 "region: us-west-2",
+                "regions:",
+                "  - us-west-2",
+                "  - us-east-1",
                 "session_name: test-session",
                 "check_identity: true",
                 "enable_coh: true",
@@ -50,6 +54,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.role_arn == "arn:aws:iam::123456789012:role/TestRole"
     assert cfg.external_id == "abc123"
     assert cfg.region == "us-west-2"
+    assert cfg.regions == ["us-west-2", "us-east-1"]
     assert cfg.session_name == "test-session"
     assert cfg.check_identity is True
     assert cfg.enable_coh is True
@@ -64,6 +69,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         role_arn="arn:from:file",
         external_id="file-external-id",
         region="us-west-2",
+        regions=["us-west-2", "us-east-1"],
         session_name="from-file",
         check_identity=False,
         enable_coh=False,
@@ -87,6 +93,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.role_arn == "arn:from:cli"
     assert merged.external_id == "cli-external-id"
     assert merged.region == "eu-west-1"
+    assert merged.regions == ["eu-west-1", "us-west-2", "us-east-1"]
     assert merged.session_name == "from-cli"
     assert merged.check_identity is True
     assert merged.enable_coh is True
@@ -127,3 +134,26 @@ def test_load_config_rejects_overlapping_account_override_lists(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="cannot overlap"):
         load_config(str(config_file))
+
+
+def test_load_config_requires_primary_region_in_regions_list(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "region: us-east-1",
+                "regions:",
+                "  - us-west-2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="region must be included in regions"):
+        load_config(str(config_file))
+
+
+def test_resolve_regions_returns_primary_region_first() -> None:
+    config = AppConfig(region="us-east-1", regions=["us-east-1", "us-west-2", "us-east-1"])
+
+    assert resolve_regions(config) == ["us-east-1", "us-west-2"]

@@ -26,7 +26,9 @@ def test_generate_policy_full_adds_optional_permissions() -> None:
     full_actions = _collect_actions(generate_policy("full"))
 
     assert "organizations:ListAccounts" in min_actions
+    assert "cost-optimization-hub:ListEnrollmentStatuses" in min_actions
     assert "cost-optimization-hub:UpdateEnrollmentStatus" not in min_actions
+    assert "cost-optimization-hub:ListEnrollmentStatuses" in full_actions
     assert "cost-optimization-hub:UpdateEnrollmentStatus" in full_actions
     assert "iam:CreateServiceLinkedRole" in full_actions
     assert "iam:PutRolePolicy" in full_actions

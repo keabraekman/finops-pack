@@ -82,6 +82,7 @@ Resources:
               - ce:Describe*
               - ce:Get*
               - ce:List*
+              - cost-optimization-hub:ListEnrollmentStatuses
               - cur:DescribeReportDefinitions
               - pricing:DescribeServices
               - pricing:GetAttributeValues

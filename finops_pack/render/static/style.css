@@ -210,6 +210,54 @@ h3 {
   gap: 16px;
 }
 
+.access-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.status-line,
+.status-note,
+.status-meta {
+  margin: 0;
+}
+
+.status-note {
+  color: var(--muted);
+}
+
+.status-meta {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.module-item {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.module-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.module-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
 .account-column-header {
   display: flex;
   align-items: center;
@@ -296,6 +344,7 @@ h3 {
     min-width: 0;
   }
 
+  .access-grid,
   .account-map-grid,
   .summary-grid,
   .kv-grid {

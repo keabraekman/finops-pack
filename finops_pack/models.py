@@ -60,6 +60,39 @@ class AccountMapEntry:
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
+class RegionCoverage:
+    strategy: Literal["fixed"] = "fixed"
+    primary_region: str = "us-east-1"
+    regions: list[str] = Field(default_factory=list)
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class AccessCheck:
+    check_id: str
+    label: str
+    status: Literal["ACTIVE", "DEGRADED"] = "DEGRADED"
+    enabled: bool | None = None
+    reason: str = ""
+    checked_in_region: str = "us-east-1"
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class ModuleStatus:
+    module_id: str
+    label: str
+    status: Literal["ACTIVE", "DEGRADED"] = "DEGRADED"
+    reason: str = ""
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class AccessReport:
+    account_id: str | None = None
+    region_coverage: RegionCoverage | None = None
+    checks: list[AccessCheck] = Field(default_factory=list)
+    modules: list[ModuleStatus] = Field(default_factory=list)
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
 class Recommendation:
     code: str
     title: str

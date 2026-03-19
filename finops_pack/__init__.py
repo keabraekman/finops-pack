@@ -3,10 +3,14 @@
 __version__ = "0.1.0"
 
 from finops_pack.models import (
+    AccessCheck,
+    AccessReport,
     AccountMapEntry,
     AccountRecord,
     Finding,
+    ModuleStatus,
     Recommendation,
+    RegionCoverage,
     Resource,
     SavingsRange,
 )
@@ -14,7 +18,11 @@ from finops_pack.models import (
 __all__ = [
     "AccountMapEntry",
     "AccountRecord",
+    "AccessCheck",
+    "AccessReport",
     "Finding",
+    "ModuleStatus",
+    "RegionCoverage",
     "Recommendation",
     "Resource",
     "SavingsRange",
