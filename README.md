@@ -105,7 +105,7 @@ Based on the commands currently implemented in this repo, the narrowest target-r
   - `cost-optimization-hub:UpdateEnrollmentStatus`
   - `iam:CreateServiceLinkedRole` for `cost-optimization-hub.bcm.amazonaws.com`
   - `iam:PutRolePolicy` on `AWSServiceRoleForCostOptimizationHub`
-- Baseline read access now also includes `cost-optimization-hub:ListEnrollmentStatuses` so finops-pack can report whether COH is already enabled.
+- Baseline read access now also includes `cost-optimization-hub:ListEnrollmentStatuses`, `cost-optimization-hub:ListRecommendationSummaries`, and `cost-optimization-hub:ListRecommendations` so finops-pack can report COH readiness and snapshot raw COH data.
 
 The checked-in CloudFormation template and starter IAM JSON files are still broader because they are scaffolding for future collectors and billing reads.
 
@@ -128,6 +128,8 @@ Successful runs now write:
 
 - `output/accounts.json`: normalized account inventory plus prod/nonprod classification metadata
 - `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
+- `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
+- `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
 - `output/dashboard.html`: HTML dashboard with an Account Map section
 
 ## Optional: enable Cost Optimization Hub

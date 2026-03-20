@@ -48,6 +48,8 @@ BASE_POLICY_STATEMENTS: list[dict[str, Any]] = [
             "ce:Get*",
             "ce:List*",
             "cost-optimization-hub:ListEnrollmentStatuses",
+            "cost-optimization-hub:ListRecommendationSummaries",
+            "cost-optimization-hub:ListRecommendations",
             "cur:DescribeReportDefinitions",
             "pricing:DescribeServices",
             "pricing:GetAttributeValues",

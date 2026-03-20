@@ -13,7 +13,11 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.aws.assume_role import assume_role_session
-from finops_pack.aws.cost_optimization_hub import enable_cost_optimization_hub
+from finops_pack.aws.cost_optimization_hub import (
+    enable_cost_optimization_hub,
+    list_recommendation_summaries,
+    list_recommendations,
+)
 from finops_pack.collectors.organizations import list_accounts, load_account_records
 from finops_pack.config import load_config, merge_run_config, resolve_regions
 from finops_pack.iam_policy_generator import render_policy, write_policy
@@ -332,6 +336,122 @@ def _print_access_report(access_report: AccessReport) -> None:
         print(f"module_{module.module_id}={module.status}: {module.reason}")
 
 
+def _raw_output_dir(output_dir: Path) -> Path:
+    """Return the raw snapshot directory rooted alongside the configured output dir."""
+    raw_root = output_dir if output_dir.name == "out" else output_dir.parent / "out"
+    return raw_root / "raw"
+
+
+def _write_json_snapshot(destination: Path, payload: dict[str, Any]) -> Path:
+    """Write snapshot JSON with stable formatting."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
+    return destination
+
+
+def _collect_coh_raw_snapshots(
+    session: Any,
+    *,
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+) -> tuple[Path, dict[str, Any], Path, dict[str, Any]]:
+    """Collect and persist raw Cost Optimization Hub summary and recommendation payloads."""
+    raw_dir = _raw_output_dir(output_dir)
+    summaries_path = raw_dir / "coh_summaries.json"
+    recommendations_path = raw_dir / "coh_recommendations.json"
+
+    try:
+        summaries_snapshot = list_recommendation_summaries(session, region_name=region_name)
+    except RuntimeError as exc:
+        summaries_snapshot = {
+            "operation": "ListRecommendationSummaries",
+            "request": {},
+            "pages": [],
+            "items": [],
+            "itemCount": 0,
+            "estimatedTotalDedupedSavings": None,
+            "currencyCode": None,
+            "groupBy": None,
+            "metrics": None,
+            "error": str(exc),
+        }
+
+    try:
+        recommendations_snapshot = list_recommendations(session, region_name=region_name)
+    except RuntimeError as exc:
+        recommendations_snapshot = {
+            "operation": "ListRecommendations",
+            "request": {"includeAllRecommendations": True},
+            "pages": [],
+            "items": [],
+            "itemCount": 0,
+            "error": str(exc),
+        }
+
+    _write_json_snapshot(summaries_path, summaries_snapshot)
+    _write_json_snapshot(recommendations_path, recommendations_snapshot)
+    return (
+        summaries_path,
+        summaries_snapshot,
+        recommendations_path,
+        recommendations_snapshot,
+    )
+
+
+def _merge_coh_collection_status(
+    access_report: AccessReport,
+    *,
+    summaries_snapshot: dict[str, Any],
+    recommendations_snapshot: dict[str, Any],
+) -> None:
+    """Mark the COH module degraded when the collector itself is blocked."""
+    module = next(
+        (item for item in access_report.modules if item.module_id == "cost_optimization_hub"),
+        None,
+    )
+    if module is None:
+        return
+
+    collector_reasons = [
+        message
+        for message in (
+            summaries_snapshot.get("error"),
+            recommendations_snapshot.get("error"),
+        )
+        if isinstance(message, str) and message
+    ]
+    if not collector_reasons:
+        return
+
+    module.status = "DEGRADED"
+    reasons = [module.reason, *collector_reasons]
+    module.reason = "; ".join(dict.fromkeys(reasons))
+
+
+def _print_coh_collection_summary(
+    summaries_path: Path,
+    summaries_snapshot: dict[str, Any],
+    recommendations_path: Path,
+    recommendations_snapshot: dict[str, Any],
+) -> None:
+    """Emit COH collector summary lines to stdout."""
+    print(f"coh_summaries_path={summaries_path}")
+    print(f"coh_recommendations_path={recommendations_path}")
+    print(f"coh_summary_count={summaries_snapshot.get('itemCount', 0)}")
+    print(
+        "coh_estimated_total_deduped_savings="
+        f"{summaries_snapshot.get('estimatedTotalDedupedSavings')}"
+    )
+    print(f"coh_recommendation_count={recommendations_snapshot.get('itemCount', 0)}")
+
+    summaries_error = summaries_snapshot.get("error")
+    recommendations_error = recommendations_snapshot.get("error")
+    if isinstance(summaries_error, str) and summaries_error:
+        print(f"coh_summaries_error={summaries_error}")
+    if isinstance(recommendations_error, str) and recommendations_error:
+        print(f"coh_recommendations_error={recommendations_error}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build and return the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -490,7 +610,29 @@ def handle_run(args: argparse.Namespace) -> int:
         region_coverage=region_coverage,
         caller_identity=caller_identity,
     )
+    output_dir = Path(resolved.output_dir)
+    (
+        coh_summaries_path,
+        coh_summaries_snapshot,
+        coh_recommendations_path,
+        coh_recommendations_snapshot,
+    ) = _collect_coh_raw_snapshots(
+        session,
+        output_dir=output_dir,
+        region_name=BILLING_CONTROL_PLANE_REGION,
+    )
+    _merge_coh_collection_status(
+        access_report,
+        summaries_snapshot=coh_summaries_snapshot,
+        recommendations_snapshot=coh_recommendations_snapshot,
+    )
     _print_access_report(access_report)
+    _print_coh_collection_summary(
+        coh_summaries_path,
+        coh_summaries_snapshot,
+        coh_recommendations_path,
+        coh_recommendations_snapshot,
+    )
 
     account_records = list_accounts(session)
     account_map = classify_accounts(
@@ -500,7 +642,7 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
         account_map,
-        output_dir=Path(resolved.output_dir),
+        output_dir=output_dir,
         region=resolved.region,
         account_id="AWS Organizations",
         access_report=access_report,

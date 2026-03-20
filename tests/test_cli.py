@@ -154,10 +154,40 @@ def test_handle_run_enables_cost_optimization_hub(
             )
         ]
     )
+    list_recommendation_summaries = Mock(
+        return_value={
+            "operation": "ListRecommendationSummaries",
+            "request": {},
+            "pages": [
+                {
+                    "estimatedTotalDedupedSavings": 42.5,
+                    "currencyCode": "USD",
+                    "items": [{"group": "EC2", "estimatedMonthlySavings": 42.5}],
+                }
+            ],
+            "items": [{"group": "EC2", "estimatedMonthlySavings": 42.5}],
+            "itemCount": 1,
+            "estimatedTotalDedupedSavings": 42.5,
+            "currencyCode": "USD",
+            "groupBy": None,
+            "metrics": None,
+        }
+    )
+    list_recommendations = Mock(
+        return_value={
+            "operation": "ListRecommendations",
+            "request": {"includeAllRecommendations": True},
+            "pages": [{"items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 42.5}]}],
+            "items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 42.5}],
+            "itemCount": 1,
+        }
+    )
 
     monkeypatch.setattr(cli, "assume_role_session", assume_role_session)
     monkeypatch.setattr(cli, "enable_cost_optimization_hub", enable_coh)
     monkeypatch.setattr(cli, "_build_access_report", build_access_report)
+    monkeypatch.setattr(cli, "list_recommendation_summaries", list_recommendation_summaries)
+    monkeypatch.setattr(cli, "list_recommendations", list_recommendations)
     monkeypatch.setattr(cli, "list_accounts", list_accounts)
 
     args = argparse.Namespace(
@@ -184,10 +214,14 @@ def test_handle_run_enables_cost_optimization_hub(
     enable_coh.assert_called_once_with(session, region_name="us-west-2")
     list_accounts.assert_called_once_with(session)
     build_access_report.assert_called_once()
+    list_recommendation_summaries.assert_called_once_with(session, region_name="us-east-1")
+    list_recommendations.assert_called_once_with(session, region_name="us-east-1")
 
     output = capsys.readouterr().out
     assert "enable_coh=True" in output
     assert "region_coverage=us-west-2,us-east-1" in output
+    assert "coh_estimated_total_deduped_savings=42.5" in output
+    assert "coh_recommendation_count=1" in output
     assert "resource_level_enabled=no" in output
     assert "module_resource_level_costs=DEGRADED" in output
     assert "account_count=1" in output
@@ -199,11 +233,51 @@ def test_handle_run_enables_cost_optimization_hub(
         (tmp_path / "output" / "access_report.json").read_text(encoding="utf-8")
     )
     assert access_report["region_coverage"]["regions"] == ["us-west-2", "us-east-1"]
+    coh_summaries = json.loads(
+        (tmp_path / "out" / "raw" / "coh_summaries.json").read_text(encoding="utf-8")
+    )
+    assert coh_summaries["estimatedTotalDedupedSavings"] == 42.5
+    coh_recommendations = json.loads(
+        (tmp_path / "out" / "raw" / "coh_recommendations.json").read_text(encoding="utf-8")
+    )
+    assert coh_recommendations["itemCount"] == 1
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
     assert "Account Map" in dashboard_html
     assert "prod-core" in dashboard_html
+
+
+def test_merge_coh_collection_status_marks_module_degraded_when_collection_fails() -> None:
+    report = AccessReport(
+        account_id="123456789012",
+        region_coverage=RegionCoverage(
+            strategy="fixed",
+            primary_region="us-east-1",
+            regions=["us-east-1"],
+        ),
+        modules=[
+            ModuleStatus(
+                module_id="cost_optimization_hub",
+                label="Cost Optimization Hub module",
+                status="ACTIVE",
+                reason="Cost Optimization Hub enrollment status is Active.",
+            )
+        ],
+    )
+
+    cli._merge_coh_collection_status(
+        report,
+        summaries_snapshot={
+            "error": "Failed to list Cost Optimization Hub recommendation summaries: denied"
+        },
+        recommendations_snapshot={},
+    )
+
+    assert report.modules[0].status == "DEGRADED"
+    assert (
+        "Failed to list Cost Optimization Hub recommendation summaries" in report.modules[0].reason
+    )
 
 
 def test_build_access_report_marks_modules_degraded_when_prerequisites_are_missing() -> None:
