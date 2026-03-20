@@ -130,6 +130,7 @@ Successful runs now write:
 - `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
+- `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
 - `output/dashboard.html`: HTML dashboard with an Account Map section
 
 ## Optional: enable Cost Optimization Hub

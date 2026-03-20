@@ -104,6 +104,29 @@ class Recommendation:
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
+class NormalizedRecommendation:
+    recommendation_id: str
+    source: Literal["cost_optimization_hub"] = "cost_optimization_hub"
+    category: Literal[
+        "rightsizing / idle deletion",
+        "commitment (SP/RI)",
+        "storage/network/etc.",
+    ] = "storage/network/etc."
+    account_id: str | None = None
+    region: str | None = None
+    resource_id: str | None = None
+    resource_arn: str | None = None
+    current_resource_type: str | None = None
+    recommended_resource_type: str | None = None
+    action_type: str | None = None
+    currency_code: str | None = None
+    estimated_monthly_savings: float | None = Field(default=None, ge=0)
+    estimated_monthly_cost: float | None = Field(default=None, ge=0)
+    estimated_savings_percentage: float | None = None
+    recommendation: Recommendation | None = None
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
 class Finding:
     finding_id: str
     finding_type: str

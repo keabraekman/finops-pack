@@ -14,9 +14,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.aws.assume_role import assume_role_session
 from finops_pack.aws.cost_optimization_hub import (
+    COH_DETAIL_TOP_N,
+    collect_top_recommendation_details,
     enable_cost_optimization_hub,
     list_recommendation_summaries,
     list_recommendations,
+    normalize_recommendation,
 )
 from finops_pack.collectors.organizations import list_accounts, load_account_records
 from finops_pack.config import load_config, merge_run_config, resolve_regions
@@ -342,6 +345,12 @@ def _raw_output_dir(output_dir: Path) -> Path:
     return raw_root / "raw"
 
 
+def _normalized_output_dir(output_dir: Path) -> Path:
+    """Return the normalized output directory rooted alongside the configured output dir."""
+    normalized_root = output_dir if output_dir.name == "out" else output_dir.parent / "out"
+    return normalized_root / "normalized"
+
+
 def _write_json_snapshot(destination: Path, payload: dict[str, Any]) -> Path:
     """Write snapshot JSON with stable formatting."""
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -403,6 +412,7 @@ def _merge_coh_collection_status(
     *,
     summaries_snapshot: dict[str, Any],
     recommendations_snapshot: dict[str, Any],
+    detail_errors: list[str] | None = None,
 ) -> None:
     """Mark the COH module degraded when the collector itself is blocked."""
     module = next(
@@ -420,6 +430,8 @@ def _merge_coh_collection_status(
         )
         if isinstance(message, str) and message
     ]
+    if detail_errors:
+        collector_reasons.extend(detail_errors)
     if not collector_reasons:
         return
 
@@ -450,6 +462,44 @@ def _print_coh_collection_summary(
         print(f"coh_summaries_error={summaries_error}")
     if isinstance(recommendations_error, str) and recommendations_error:
         print(f"coh_recommendations_error={recommendations_error}")
+
+
+def _collect_coh_normalized_recommendations(
+    session: Any,
+    *,
+    recommendations_snapshot: dict[str, Any],
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+    top_n: int = COH_DETAIL_TOP_N,
+) -> tuple[Path, int, list[str]]:
+    """Fetch top COH recommendation details, normalize them, and persist the result."""
+    normalized_dir = _normalized_output_dir(output_dir)
+    normalized_path = normalized_dir / "recommendations.json"
+
+    detail_pairs, detail_errors = collect_top_recommendation_details(
+        session,
+        recommendations_snapshot=recommendations_snapshot,
+        top_n=top_n,
+        region_name=region_name,
+    )
+    normalized_recommendations = [
+        normalize_recommendation(detail, list_item=list_item)
+        for list_item, detail in detail_pairs
+    ]
+    JsonExporter().export(normalized_recommendations, normalized_path)
+    return normalized_path, len(normalized_recommendations), detail_errors
+
+
+def _print_coh_normalized_summary(
+    normalized_path: Path,
+    normalized_count: int,
+    detail_errors: list[str],
+) -> None:
+    """Emit normalized COH output details to stdout."""
+    print(f"coh_normalized_recommendations_path={normalized_path}")
+    print(f"coh_normalized_recommendation_count={normalized_count}")
+    for error in detail_errors:
+        print(f"coh_detail_error={error}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -621,10 +671,21 @@ def handle_run(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         region_name=BILLING_CONTROL_PLANE_REGION,
     )
+    (
+        coh_normalized_path,
+        coh_normalized_count,
+        coh_detail_errors,
+    ) = _collect_coh_normalized_recommendations(
+        session,
+        recommendations_snapshot=coh_recommendations_snapshot,
+        output_dir=output_dir,
+        region_name=BILLING_CONTROL_PLANE_REGION,
+    )
     _merge_coh_collection_status(
         access_report,
         summaries_snapshot=coh_summaries_snapshot,
         recommendations_snapshot=coh_recommendations_snapshot,
+        detail_errors=coh_detail_errors,
     )
     _print_access_report(access_report)
     _print_coh_collection_summary(
@@ -632,6 +693,11 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summaries_snapshot,
         coh_recommendations_path,
         coh_recommendations_snapshot,
+    )
+    _print_coh_normalized_summary(
+        coh_normalized_path,
+        coh_normalized_count,
+        coh_detail_errors,
     )
 
     account_records = list_accounts(session)

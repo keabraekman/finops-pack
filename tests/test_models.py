@@ -1,4 +1,4 @@
-from finops_pack import Finding, Recommendation, Resource, SavingsRange
+from finops_pack import Finding, NormalizedRecommendation, Recommendation, Resource, SavingsRange
 from finops_pack.models import AccessCheck, AccessReport, ModuleStatus, RegionCoverage
 
 
@@ -65,3 +65,26 @@ def test_access_report_models_can_be_created() -> None:
     assert report.region_coverage is not None
     assert report.region_coverage.regions == ["us-east-1", "us-west-2"]
     assert report.checks[0].enabled is True
+
+
+def test_normalized_recommendation_model_can_be_created() -> None:
+    normalized = NormalizedRecommendation(
+        recommendation_id="rec-123",
+        category="rightsizing / idle deletion",
+        account_id="123456789012",
+        region="us-east-1",
+        resource_id="i-1234567890abcdef0",
+        action_type="Rightsize",
+        estimated_monthly_savings=15.0,
+        recommendation=Recommendation(
+            code="coh-rightsize-ec2instance",
+            title="Rightsize Ec2Instance",
+            summary="Current: m5.large. Recommended: t3.large.",
+            action="Rightsize the Ec2Instance.",
+            savings=SavingsRange(monthly_low_usd=15.0, monthly_high_usd=15.0),
+        ),
+    )
+
+    assert normalized.category == "rightsizing / idle deletion"
+    assert normalized.recommendation is not None
+    assert normalized.recommendation.savings is not None

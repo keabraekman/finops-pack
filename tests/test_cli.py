@@ -177,10 +177,66 @@ def test_handle_run_enables_cost_optimization_hub(
         return_value={
             "operation": "ListRecommendations",
             "request": {"includeAllRecommendations": True},
-            "pages": [{"items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 42.5}]}],
-            "items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 42.5}],
+            "pages": [
+                {
+                    "items": [
+                        {
+                            "recommendationId": "rec-1",
+                            "estimatedMonthlySavings": 42.5,
+                            "currentResourceType": "Ec2Instance",
+                            "currentResourceSummary": "m5.large at low utilization",
+                            "recommendedResourceSummary": "t3.large estimated to satisfy demand",
+                        }
+                    ]
+                }
+            ],
+            "items": [
+                {
+                    "recommendationId": "rec-1",
+                    "estimatedMonthlySavings": 42.5,
+                    "currentResourceType": "Ec2Instance",
+                    "currentResourceSummary": "m5.large at low utilization",
+                    "recommendedResourceSummary": "t3.large estimated to satisfy demand",
+                }
+            ],
             "itemCount": 1,
         }
+    )
+    collect_top_recommendation_details = Mock(
+        return_value=(
+            [
+                (
+                    {
+                        "recommendationId": "rec-1",
+                        "estimatedMonthlySavings": 42.5,
+                        "currentResourceType": "Ec2Instance",
+                        "currentResourceSummary": "m5.large at low utilization",
+                        "recommendedResourceSummary": "t3.large estimated to satisfy demand",
+                    },
+                    {
+                        "recommendationId": "rec-1",
+                        "accountId": "123456789012",
+                        "region": "us-east-1",
+                        "resourceId": "i-1234567890abcdef0",
+                        "resourceArn": (
+                            "arn:aws:ec2:us-east-1:123456789012:"
+                            "instance/i-1234567890abcdef0"
+                        ),
+                        "currentResourceType": "Ec2Instance",
+                        "recommendedResourceType": "Ec2Instance",
+                        "estimatedMonthlySavings": 42.5,
+                        "estimatedMonthlyCost": 100.0,
+                        "estimatedSavingsPercentage": 42.5,
+                        "currencyCode": "USD",
+                        "implementationEffort": "Low",
+                        "actionType": "Rightsize",
+                        "restartNeeded": False,
+                        "rollbackPossible": True,
+                    },
+                )
+            ],
+            [],
+        )
     )
 
     monkeypatch.setattr(cli, "assume_role_session", assume_role_session)
@@ -188,6 +244,11 @@ def test_handle_run_enables_cost_optimization_hub(
     monkeypatch.setattr(cli, "_build_access_report", build_access_report)
     monkeypatch.setattr(cli, "list_recommendation_summaries", list_recommendation_summaries)
     monkeypatch.setattr(cli, "list_recommendations", list_recommendations)
+    monkeypatch.setattr(
+        cli,
+        "collect_top_recommendation_details",
+        collect_top_recommendation_details,
+    )
     monkeypatch.setattr(cli, "list_accounts", list_accounts)
 
     args = argparse.Namespace(
@@ -222,6 +283,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "region_coverage=us-west-2,us-east-1" in output
     assert "coh_estimated_total_deduped_savings=42.5" in output
     assert "coh_recommendation_count=1" in output
+    assert "coh_normalized_recommendation_count=1" in output
     assert "resource_level_enabled=no" in output
     assert "module_resource_level_costs=DEGRADED" in output
     assert "account_count=1" in output
@@ -241,6 +303,11 @@ def test_handle_run_enables_cost_optimization_hub(
         (tmp_path / "out" / "raw" / "coh_recommendations.json").read_text(encoding="utf-8")
     )
     assert coh_recommendations["itemCount"] == 1
+    normalized_recommendations = json.loads(
+        (tmp_path / "out" / "normalized" / "recommendations.json").read_text(encoding="utf-8")
+    )
+    assert normalized_recommendations[0]["category"] == "rightsizing / idle deletion"
+    assert normalized_recommendations[0]["recommendation"]["code"] == "coh-rightsize-ec2instance"
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
