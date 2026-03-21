@@ -376,6 +376,12 @@ def normalize_recommendation(
         detail.get("estimatedMonthlySavings"),
         list_item.get("estimatedMonthlySavings") if list_item is not None else None,
     )
+    current_resource_summary = _first_string(
+        list_item.get("currentResourceSummary") if list_item is not None else None
+    )
+    recommended_resource_summary = _first_string(
+        list_item.get("recommendedResourceSummary") if list_item is not None else None
+    )
     savings = None
     if estimated_monthly_savings is not None:
         savings = SavingsRange(
@@ -402,6 +408,13 @@ def normalize_recommendation(
         resource_arn=_first_string(detail.get("resourceArn")),
         current_resource_type=current_resource_type,
         recommended_resource_type=recommended_resource_type,
+        current_resource_summary=current_resource_summary,
+        recommended_resource_summary=recommended_resource_summary,
+        current_resource_details=cast(dict[str, Any] | None, detail.get("currentResourceDetails")),
+        recommended_resource_details=cast(
+            dict[str, Any] | None,
+            detail.get("recommendedResourceDetails"),
+        ),
         action_type=action_type,
         currency_code=_first_string(
             detail.get("currencyCode"),

@@ -199,6 +199,16 @@ h3 {
   border-radius: 10px;
 }
 
+.note-list {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.note-list li + li {
+  margin-top: 8px;
+}
+
 .empty-state {
   text-align: center;
   color: var(--muted);

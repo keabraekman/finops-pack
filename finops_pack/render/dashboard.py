@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from finops_pack.models import AccessReport, AccountMapEntry
+from finops_pack.models import AccessReport, AccountMapEntry, NormalizedRecommendation
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -47,6 +49,40 @@ def _build_executive_summary(
     return summary
 
 
+def _build_coh_context(
+    coh_summary: dict[str, Any] | None,
+    recommendations: Sequence[NormalizedRecommendation],
+) -> dict[str, Any] | None:
+    """Build dashboard context for COH savings notes and warnings."""
+    if coh_summary is None and not recommendations:
+        return None
+
+    estimated_monthly_savings = None
+    currency_code = None
+    if coh_summary is not None:
+        estimated_monthly_savings_value = coh_summary.get("estimatedTotalDedupedSavings")
+        if isinstance(estimated_monthly_savings_value, (int, float)):
+            estimated_monthly_savings = float(estimated_monthly_savings_value)
+        if isinstance(coh_summary.get("currencyCode"), str):
+            currency_code = coh_summary["currencyCode"]
+
+    return {
+        "estimated_monthly_savings": estimated_monthly_savings,
+        "currency_code": currency_code,
+        "recommendation_count": len(recommendations),
+        "notes": [
+            (
+                "Estimated monthly savings from AWS Cost Optimization Hub use the service's "
+                "730-hour monthly normalization."
+            ),
+            (
+                "Recommendation IDs can expire after about 24 hours, so refresh the latest "
+                "snapshot before sharing or acting on a stored recommendationId."
+            ),
+        ],
+    }
+
+
 def render_dashboard_html(
     account_map: list[AccountMapEntry],
     *,
@@ -56,6 +92,8 @@ def render_dashboard_html(
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
+    coh_summary: dict[str, Any] | None = None,
+    recommendations: Sequence[NormalizedRecommendation] | None = None,
 ) -> str:
     """Render the dashboard HTML for account inventory."""
     environment = Environment(
@@ -64,6 +102,7 @@ def render_dashboard_html(
     )
     template = environment.get_template("report.html.j2")
     grouped = _group_accounts(account_map)
+    recommendation_list = list(recommendations or [])
 
     return template.render(
         title=title,
@@ -82,6 +121,7 @@ def render_dashboard_html(
         findings=[],
         recommendations=[],
         access_report=access_report,
+        coh_context=_build_coh_context(coh_summary, recommendation_list),
         show_findings_section=False,
         show_recommendations_section=False,
     )
@@ -94,6 +134,8 @@ def write_dashboard(
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
+    coh_summary: dict[str, Any] | None = None,
+    recommendations: Sequence[NormalizedRecommendation] | None = None,
 ) -> Path:
     """Write the account dashboard HTML and its stylesheet."""
     destination_path = Path(destination)
@@ -104,6 +146,8 @@ def write_dashboard(
             account_id=account_id,
             region=region,
             access_report=access_report,
+            coh_summary=coh_summary,
+            recommendations=recommendations,
         ),
         encoding="utf-8",
     )

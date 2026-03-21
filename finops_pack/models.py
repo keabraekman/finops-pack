@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
@@ -118,6 +118,10 @@ class NormalizedRecommendation:
     resource_arn: str | None = None
     current_resource_type: str | None = None
     recommended_resource_type: str | None = None
+    current_resource_summary: str | None = None
+    recommended_resource_summary: str | None = None
+    current_resource_details: dict[str, Any] | None = None
+    recommended_resource_details: dict[str, Any] | None = None
     action_type: str | None = None
     currency_code: str | None = None
     estimated_monthly_savings: float | None = Field(default=None, ge=0)

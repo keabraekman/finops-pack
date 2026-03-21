@@ -87,6 +87,41 @@
         </div>
       </section>
 
+      {% if coh_context %}
+        <section class="section">
+          <h2>COH Notes</h2>
+          <div class="card">
+            <div class="kv-grid">
+              {% if coh_context.estimated_monthly_savings is not none %}
+                <div>
+                  <span class="kv-label">Estimated Monthly Savings (De-duped)</span>
+                  <div class="kv-value">
+                    {% if coh_context.currency_code == "USD" %}
+                      ${{ "%.2f"|format(coh_context.estimated_monthly_savings) }}
+                    {% elif coh_context.currency_code %}
+                      {{ "%.2f"|format(coh_context.estimated_monthly_savings) }} {{ coh_context.currency_code }}
+                    {% else %}
+                      {{ "%.2f"|format(coh_context.estimated_monthly_savings) }}
+                    {% endif %}
+                  </div>
+                </div>
+              {% endif %}
+
+              <div>
+                <span class="kv-label">Normalized Recommendations</span>
+                <div class="kv-value">{{ coh_context.recommendation_count }}</div>
+              </div>
+            </div>
+
+            <ul class="note-list">
+              {% for note in coh_context.notes %}
+                <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+      {% endif %}
+
       {% if access_report and access_report.region_coverage %}
         <section class="section">
           <h2>Region Coverage</h2>

@@ -29,10 +29,11 @@ from finops_pack.models import (
     AccessReport,
     AccountMapEntry,
     ModuleStatus,
+    NormalizedRecommendation,
     RegionCoverage,
 )
 from finops_pack.render.dashboard import write_dashboard
-from finops_pack.render.exporters import JsonExporter
+from finops_pack.render.exporters import CsvExporter, JsonExporter
 
 BILLING_CONTROL_PLANE_REGION = "us-east-1"
 ACCESS_DENIED_CODES = {
@@ -471,7 +472,7 @@ def _collect_coh_normalized_recommendations(
     output_dir: Path,
     region_name: str = BILLING_CONTROL_PLANE_REGION,
     top_n: int = COH_DETAIL_TOP_N,
-) -> tuple[Path, int, list[str]]:
+) -> tuple[Path, list[NormalizedRecommendation], list[str]]:
     """Fetch top COH recommendation details, normalize them, and persist the result."""
     normalized_dir = _normalized_output_dir(output_dir)
     normalized_path = normalized_dir / "recommendations.json"
@@ -487,7 +488,50 @@ def _collect_coh_normalized_recommendations(
         for list_item, detail in detail_pairs
     ]
     JsonExporter().export(normalized_recommendations, normalized_path)
-    return normalized_path, len(normalized_recommendations), detail_errors
+    return normalized_path, normalized_recommendations, detail_errors
+
+
+def _build_coh_csv_rows(
+    recommendations: list[NormalizedRecommendation],
+) -> list[dict[str, Any]]:
+    """Map normalized recommendations into the CSV export shape."""
+    rows: list[dict[str, Any]] = []
+    for recommendation in recommendations:
+        rows.append(
+            {
+                "resourceId": recommendation.resource_id or "",
+                "accountId": recommendation.account_id or "",
+                "type": (
+                    recommendation.current_resource_type
+                    or recommendation.recommended_resource_type
+                    or recommendation.category
+                ),
+                "action": recommendation.action_type or "",
+                "estSavings": (
+                    ""
+                    if recommendation.estimated_monthly_savings is None
+                    else recommendation.estimated_monthly_savings
+                ),
+                "region": recommendation.region or "",
+            }
+        )
+    return rows
+
+
+def _export_coh_recommendations(
+    recommendations: list[NormalizedRecommendation],
+    *,
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    """Write CSV and JSON recommendation exports for the current run."""
+    csv_path = output_dir / "exports.csv"
+    json_path = output_dir / "exports.json"
+
+    CsvExporter(
+        fieldnames=["resourceId", "accountId", "type", "action", "estSavings", "region"]
+    ).export(_build_coh_csv_rows(recommendations), csv_path)
+    JsonExporter().export(recommendations, json_path)
+    return csv_path, json_path
 
 
 def _print_coh_normalized_summary(
@@ -500,6 +544,12 @@ def _print_coh_normalized_summary(
     print(f"coh_normalized_recommendation_count={normalized_count}")
     for error in detail_errors:
         print(f"coh_detail_error={error}")
+
+
+def _print_coh_export_summary(csv_path: Path, json_path: Path) -> None:
+    """Emit export file paths to stdout."""
+    print(f"coh_csv_export_path={csv_path}")
+    print(f"coh_json_export_path={json_path}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -590,6 +640,8 @@ def _write_account_outputs(
     region: str,
     account_id: str,
     access_report: AccessReport,
+    coh_summary: dict[str, Any] | None = None,
+    recommendations: list[NormalizedRecommendation] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Write JSON and HTML artifacts for classified accounts."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -608,6 +660,8 @@ def _write_account_outputs(
         account_id=account_id,
         region=region,
         access_report=access_report,
+        coh_summary=coh_summary,
+        recommendations=recommendations,
     )
 
     return accounts_path, access_report_path, dashboard_path
@@ -673,13 +727,17 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     (
         coh_normalized_path,
-        coh_normalized_count,
+        coh_normalized_recommendations,
         coh_detail_errors,
     ) = _collect_coh_normalized_recommendations(
         session,
         recommendations_snapshot=coh_recommendations_snapshot,
         output_dir=output_dir,
         region_name=BILLING_CONTROL_PLANE_REGION,
+    )
+    coh_csv_export_path, coh_json_export_path = _export_coh_recommendations(
+        coh_normalized_recommendations,
+        output_dir=output_dir,
     )
     _merge_coh_collection_status(
         access_report,
@@ -696,9 +754,10 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     _print_coh_normalized_summary(
         coh_normalized_path,
-        coh_normalized_count,
+        len(coh_normalized_recommendations),
         coh_detail_errors,
     )
+    _print_coh_export_summary(coh_csv_export_path, coh_json_export_path)
 
     account_records = list_accounts(session)
     account_map = classify_accounts(
@@ -712,6 +771,8 @@ def handle_run(args: argparse.Namespace) -> int:
         region=resolved.region,
         account_id="AWS Organizations",
         access_report=access_report,
+        coh_summary=coh_summaries_snapshot,
+        recommendations=coh_normalized_recommendations,
     )
     print(f"account_count={len(account_map)}")
     print(f"accounts_path={accounts_path}")

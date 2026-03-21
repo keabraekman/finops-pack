@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -26,7 +27,7 @@ class JsonExporter(Exporter):
         """Export data as JSON."""
         destination.parent.mkdir(parents=True, exist_ok=True)
         payload = [self._normalize_item(item) for item in data]
-        destination.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        destination.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
 
     @staticmethod
     def _normalize_item(item: Any) -> Any:
@@ -37,8 +38,20 @@ class JsonExporter(Exporter):
 
 
 class CsvExporter(Exporter):
-    """Placeholder interface for CSV export."""
+    """Export dict-like rows as CSV."""
+
+    def __init__(self, fieldnames: Sequence[str]) -> None:
+        self.fieldnames = list(fieldnames)
 
     def export(self, data: Sequence[Any], destination: Path) -> None:
         """Export data as CSV."""
-        raise NotImplementedError("CSV export logic is not implemented yet.")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        rows = [JsonExporter._normalize_item(item) for item in data]
+
+        with destination.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=self.fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise TypeError("CsvExporter expects dict-like rows after normalization.")
+                writer.writerow({field: row.get(field, "") for field in self.fieldnames})

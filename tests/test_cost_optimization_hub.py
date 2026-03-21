@@ -181,6 +181,12 @@ def test_normalize_recommendation_maps_commitment_category() -> None:
             "actionType": "PurchaseSavingsPlans",
             "restartNeeded": False,
             "rollbackPossible": True,
+            "recommendedResourceDetails": {
+                "computeSavingsPlans": {
+                    "paymentOption": "NoUpfront",
+                    "termLength": "ONE_YEAR",
+                }
+            },
         }
     )
 
@@ -189,6 +195,11 @@ def test_normalize_recommendation_maps_commitment_category() -> None:
     assert normalized.recommendation.code == "coh-purchasesavingsplans-ec2instancesavingsplans"
     assert normalized.recommendation.savings is not None
     assert normalized.recommendation.savings.monthly_low_usd == 32.5
+    assert normalized.recommended_resource_details is not None
+    assert (
+        normalized.recommended_resource_details["computeSavingsPlans"]["termLength"]
+        == "ONE_YEAR"
+    )
 
 
 def test_normalize_recommendation_maps_rightsizing_category_from_list_summary() -> None:
@@ -201,6 +212,7 @@ def test_normalize_recommendation_maps_rightsizing_category_from_list_summary() 
             "resourceArn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123",
             "currentResourceType": "Ec2Instance",
             "recommendedResourceType": "Ec2Instance",
+            "recommendedResourceDetails": {"ec2Instance": {"instanceType": "t3.large"}},
             "estimatedMonthlySavings": 18.0,
             "currencyCode": "USD",
             "implementationEffort": "Medium",
@@ -220,3 +232,4 @@ def test_normalize_recommendation_maps_rightsizing_category_from_list_summary() 
     assert "Current: m5.large" in normalized.recommendation.summary
     assert normalized.recommendation.effort == "medium"
     assert normalized.recommendation.risk == "medium"
+    assert normalized.recommended_resource_summary == "t3.large estimated to satisfy demand"

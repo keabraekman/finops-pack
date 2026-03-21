@@ -74,6 +74,7 @@ def test_normalized_recommendation_model_can_be_created() -> None:
         account_id="123456789012",
         region="us-east-1",
         resource_id="i-1234567890abcdef0",
+        recommended_resource_details={"ec2Instance": {"instanceType": "t3.large"}},
         action_type="Rightsize",
         estimated_monthly_savings=15.0,
         recommendation=Recommendation(
@@ -88,3 +89,4 @@ def test_normalized_recommendation_model_can_be_created() -> None:
     assert normalized.category == "rightsizing / idle deletion"
     assert normalized.recommendation is not None
     assert normalized.recommendation.savings is not None
+    assert normalized.recommended_resource_details is not None

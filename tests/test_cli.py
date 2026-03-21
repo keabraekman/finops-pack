@@ -232,6 +232,9 @@ def test_handle_run_enables_cost_optimization_hub(
                         "actionType": "Rightsize",
                         "restartNeeded": False,
                         "rollbackPossible": True,
+                        "recommendedResourceDetails": {
+                            "ec2Instance": {"instanceType": "t3.large", "platform": "Linux/UNIX"}
+                        },
                     },
                 )
             ],
@@ -284,6 +287,8 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "coh_estimated_total_deduped_savings=42.5" in output
     assert "coh_recommendation_count=1" in output
     assert "coh_normalized_recommendation_count=1" in output
+    assert "coh_csv_export_path=" in output
+    assert "coh_json_export_path=" in output
     assert "resource_level_enabled=no" in output
     assert "module_resource_level_costs=DEGRADED" in output
     assert "account_count=1" in output
@@ -308,10 +313,20 @@ def test_handle_run_enables_cost_optimization_hub(
     )
     assert normalized_recommendations[0]["category"] == "rightsizing / idle deletion"
     assert normalized_recommendations[0]["recommendation"]["code"] == "coh-rightsize-ec2instance"
+    exports_json = json.loads((tmp_path / "output" / "exports.json").read_text(encoding="utf-8"))
+    assert (
+        exports_json[0]["recommended_resource_details"]["ec2Instance"]["instanceType"]
+        == "t3.large"
+    )
+    exports_csv = (tmp_path / "output" / "exports.csv").read_text(encoding="utf-8")
+    assert "resourceId,accountId,type,action,estSavings,region" in exports_csv
+    assert "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1" in exports_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
     assert "Account Map" in dashboard_html
+    assert "730-hour monthly normalization" in dashboard_html
+    assert "Recommendation IDs can expire after about 24 hours" in dashboard_html
     assert "prod-core" in dashboard_html
 
 

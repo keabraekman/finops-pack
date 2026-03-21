@@ -128,6 +128,8 @@ Successful runs now write:
 
 - `output/accounts.json`: normalized account inventory plus prod/nonprod classification metadata
 - `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
+- `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region)
+- `output/exports.json`: COH recommendation export with full recommended configuration fields
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
