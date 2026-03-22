@@ -120,6 +120,130 @@
             </ul>
           </div>
         </section>
+
+        {% if coh_context.top_opportunities %}
+          <section class="section">
+            <h2>Top Opportunities</h2>
+            <p class="section-note">Top 20 Cost Optimization Hub opportunities ranked by estimated monthly savings.</p>
+            <div class="card table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">Opportunity</th>
+                      <th scope="col">Account</th>
+                      <th scope="col">Category</th>
+                      <th scope="col">Region</th>
+                      <th scope="col" class="numeric-cell">Monthly Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for opportunity in coh_context.top_opportunities %}
+                      <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>
+                          <div class="table-primary">{{ opportunity.title }}</div>
+                          {% if opportunity.summary %}
+                            <div class="table-secondary">{{ opportunity.summary }}</div>
+                          {% endif %}
+                        </td>
+                        <td>
+                          <div class="table-primary">{{ opportunity.account_name }}</div>
+                          <div class="table-secondary">{{ opportunity.account_id }}</div>
+                          <span class="badge env-badge env-{{ opportunity.environment }}">{{ opportunity.environment_label }}</span>
+                        </td>
+                        <td>{{ opportunity.category_label }}</td>
+                        <td>{{ opportunity.region }}</td>
+                        <td class="numeric-cell">{{ opportunity.monthly_savings_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if coh_context.savings_by_category %}
+          <section class="section">
+            <h2>Savings by Category</h2>
+            <div class="card table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Category</th>
+                      <th scope="col" class="numeric-cell">Opportunities</th>
+                      <th scope="col" class="numeric-cell">Monthly Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for category in coh_context.savings_by_category %}
+                      <tr>
+                        <td>{{ category.label }}</td>
+                        <td class="numeric-cell">{{ category.opportunity_count }}</td>
+                        <td class="numeric-cell">{{ category.monthly_savings_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if coh_context.savings_by_account %}
+          <section class="section">
+            <h2>Savings by Account</h2>
+            <div class="card table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Account</th>
+                      <th scope="col">Environment</th>
+                      <th scope="col" class="numeric-cell">Opportunities</th>
+                      <th scope="col" class="numeric-cell">Monthly Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for account in coh_context.savings_by_account %}
+                      <tr>
+                        <td>
+                          <div class="table-primary">{{ account.account_name }}</div>
+                          <div class="table-secondary">{{ account.account_id }}</div>
+                        </td>
+                        <td>
+                          <span class="badge env-badge env-{{ account.environment }}">{{ account.environment_label }}</span>
+                        </td>
+                        <td class="numeric-cell">{{ account.opportunity_count }}</td>
+                        <td class="numeric-cell">{{ account.monthly_savings_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if coh_context.savings_by_environment %}
+          <section class="section">
+            <h2>Prod vs Non-Prod Savings</h2>
+            <div class="summary-grid">
+              {% for environment in coh_context.savings_by_environment %}
+                <article class="summary-card savings-split-card">
+                  <p class="summary-label">{{ environment.label }}</p>
+                  <p class="summary-value">{{ environment.monthly_savings_display }}</p>
+                  <p class="split-meta">
+                    {{ environment.opportunity_count }} opportunities · {{ environment.share_display }} of tracked savings
+                  </p>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
       {% endif %}
 
       {% if access_report and access_report.region_coverage %}

@@ -325,9 +325,14 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
     assert "Account Map" in dashboard_html
+    assert "Top Opportunities" in dashboard_html
+    assert "Savings by Category" in dashboard_html
+    assert "Savings by Account" in dashboard_html
+    assert "Prod vs Non-Prod Savings" in dashboard_html
     assert "730-hour monthly normalization" in dashboard_html
     assert "Recommendation IDs can expire after about 24 hours" in dashboard_html
     assert "prod-core" in dashboard_html
+    assert "Rightsizing / Idle Deletion" in dashboard_html
 
 
 def test_merge_coh_collection_status_marks_module_degraded_when_collection_fails() -> None:

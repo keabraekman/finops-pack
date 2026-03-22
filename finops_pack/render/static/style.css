@@ -84,6 +84,11 @@ h3 {
   color: var(--muted);
 }
 
+.section-note {
+  margin: -4px 0 14px;
+  color: var(--muted);
+}
+
 .meta-card,
 .card,
 .summary-card {
@@ -140,6 +145,10 @@ h3 {
 
 .card {
   padding: 18px;
+}
+
+.table-card {
+  padding: 0;
 }
 
 .card + .card {
@@ -207,6 +216,71 @@ h3 {
 
 .note-list li + li {
   margin-top: 8px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  text-align: left;
+}
+
+.data-table th {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(240, 244, 248, 0.7);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-primary {
+  font-weight: 700;
+}
+
+.table-secondary,
+.split-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.numeric-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.env-badge {
+  margin-top: 8px;
+}
+
+.env-prod {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.env-nonprod {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.env-unknown {
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .empty-state {
@@ -352,6 +426,11 @@ h3 {
   .meta-card {
     width: 100%;
     min-width: 0;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 12px 14px;
   }
 
   .access-grid,
