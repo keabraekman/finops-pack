@@ -43,6 +43,7 @@ def test_demo_command_runs(tmp_path: Path) -> None:
     assert (output_dir / "accounts.json").exists()
     assert (output_dir / "access_report.json").exists()
     assert (output_dir / "dashboard.html").exists()
+    assert (tmp_path / "out" / "summary.json").exists()
 
 
 def test_run_requires_role_arn() -> None:
@@ -262,6 +263,7 @@ def test_handle_run_enables_cost_optimization_hub(
         session_name="test-session",
         check_identity=False,
         enable_coh=True,
+        rate_limit_safe_mode=True,
         config=str(config_file),
         output_dir=str(tmp_path / "output"),
     )
@@ -275,14 +277,34 @@ def test_handle_run_enables_cost_optimization_hub(
         session_name="test-session",
         region_name="us-west-2",
     )
-    enable_coh.assert_called_once_with(session, region_name="us-west-2")
+    enable_coh.assert_called_once_with(
+        session,
+        region_name="us-west-2",
+        rate_limit_safe_mode=True,
+    )
     list_accounts.assert_called_once_with(session)
     build_access_report.assert_called_once()
-    list_recommendation_summaries.assert_called_once_with(session, region_name="us-east-1")
-    list_recommendations.assert_called_once_with(session, region_name="us-east-1")
+    list_recommendation_summaries.assert_called_once_with(
+        session,
+        region_name="us-east-1",
+        rate_limit_safe_mode=True,
+    )
+    list_recommendations.assert_called_once_with(
+        session,
+        region_name="us-east-1",
+        rate_limit_safe_mode=True,
+    )
+    collect_top_recommendation_details.assert_called_once_with(
+        session,
+        recommendations_snapshot=list_recommendations.return_value,
+        top_n=20,
+        region_name="us-east-1",
+        rate_limit_safe_mode=True,
+    )
 
     output = capsys.readouterr().out
     assert "enable_coh=True" in output
+    assert "rate_limit_safe_mode=True" in output
     assert "region_coverage=us-west-2,us-east-1" in output
     assert "coh_estimated_total_deduped_savings=42.5" in output
     assert "coh_recommendation_count=1" in output
@@ -300,6 +322,12 @@ def test_handle_run_enables_cost_optimization_hub(
         (tmp_path / "output" / "access_report.json").read_text(encoding="utf-8")
     )
     assert access_report["region_coverage"]["regions"] == ["us-west-2", "us-east-1"]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["run"]["rate_limit_safe_mode"] is True
+    assert summary["accounts"]["total"] == 1
+    assert summary["coh"]["recommendation_count"] == 1
+    assert summary["coh"]["normalized_recommendation_count"] == 1
+    assert summary["coh"]["normalized_estimated_monthly_savings"] == 42.5
     coh_summaries = json.loads(
         (tmp_path / "out" / "raw" / "coh_summaries.json").read_text(encoding="utf-8")
     )

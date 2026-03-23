@@ -115,6 +115,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 `regions` is an optional fixed region coverage list. If you set it, include the primary `region` in that list. finops-pack reports this as `region_discovery_strategy=fixed` and carries the list into `access_report.json` and the dashboard.
 
+`rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
+
 ```bash
 uv run finops-pack run \
   --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly \
@@ -130,6 +132,7 @@ Successful runs now write:
 - `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
 - `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region)
 - `output/exports.json`: COH recommendation export with full recommended configuration fields
+- `out/summary.json`: diff-friendly totals for accounts, access readiness, and COH collection results
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
@@ -147,6 +150,8 @@ uv run finops-pack run \
 ```
 
 AWS automatically creates the `AWSServiceRoleForCostOptimizationHub` service-linked role when enrollment is enabled. AWS also notes that imported recommendations are stored in `us-east-1` and can take up to 24 hours to appear.
+
+If you are working in a larger organization or you have seen `ThrottlingException` responses before, add `--rate-limit-safe-mode` to slow the COH collector down and make it more tolerant of API limits.
 
 ## How to revoke access
 

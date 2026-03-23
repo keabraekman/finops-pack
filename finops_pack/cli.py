@@ -342,14 +342,17 @@ def _print_access_report(access_report: AccessReport) -> None:
 
 def _raw_output_dir(output_dir: Path) -> Path:
     """Return the raw snapshot directory rooted alongside the configured output dir."""
-    raw_root = output_dir if output_dir.name == "out" else output_dir.parent / "out"
-    return raw_root / "raw"
+    return _artifact_output_dir(output_dir) / "raw"
 
 
 def _normalized_output_dir(output_dir: Path) -> Path:
     """Return the normalized output directory rooted alongside the configured output dir."""
-    normalized_root = output_dir if output_dir.name == "out" else output_dir.parent / "out"
-    return normalized_root / "normalized"
+    return _artifact_output_dir(output_dir) / "normalized"
+
+
+def _artifact_output_dir(output_dir: Path) -> Path:
+    """Return the stable artifact root for raw, normalized, and summary outputs."""
+    return output_dir if output_dir.name == "out" else output_dir.parent / "out"
 
 
 def _write_json_snapshot(destination: Path, payload: dict[str, Any]) -> Path:
@@ -364,6 +367,7 @@ def _collect_coh_raw_snapshots(
     *,
     output_dir: Path,
     region_name: str = BILLING_CONTROL_PLANE_REGION,
+    rate_limit_safe_mode: bool = False,
 ) -> tuple[Path, dict[str, Any], Path, dict[str, Any]]:
     """Collect and persist raw Cost Optimization Hub summary and recommendation payloads."""
     raw_dir = _raw_output_dir(output_dir)
@@ -371,7 +375,11 @@ def _collect_coh_raw_snapshots(
     recommendations_path = raw_dir / "coh_recommendations.json"
 
     try:
-        summaries_snapshot = list_recommendation_summaries(session, region_name=region_name)
+        summaries_snapshot = list_recommendation_summaries(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
     except RuntimeError as exc:
         summaries_snapshot = {
             "operation": "ListRecommendationSummaries",
@@ -387,7 +395,11 @@ def _collect_coh_raw_snapshots(
         }
 
     try:
-        recommendations_snapshot = list_recommendations(session, region_name=region_name)
+        recommendations_snapshot = list_recommendations(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
     except RuntimeError as exc:
         recommendations_snapshot = {
             "operation": "ListRecommendations",
@@ -472,6 +484,7 @@ def _collect_coh_normalized_recommendations(
     output_dir: Path,
     region_name: str = BILLING_CONTROL_PLANE_REGION,
     top_n: int = COH_DETAIL_TOP_N,
+    rate_limit_safe_mode: bool = False,
 ) -> tuple[Path, list[NormalizedRecommendation], list[str]]:
     """Fetch top COH recommendation details, normalize them, and persist the result."""
     normalized_dir = _normalized_output_dir(output_dir)
@@ -482,6 +495,7 @@ def _collect_coh_normalized_recommendations(
         recommendations_snapshot=recommendations_snapshot,
         top_n=top_n,
         region_name=region_name,
+        rate_limit_safe_mode=rate_limit_safe_mode,
     )
     normalized_recommendations = [
         normalize_recommendation(detail, list_item=list_item)
@@ -552,6 +566,101 @@ def _print_coh_export_summary(csv_path: Path, json_path: Path) -> None:
     print(f"coh_json_export_path={json_path}")
 
 
+def _build_summary_payload(
+    *,
+    region: str,
+    rate_limit_safe_mode: bool,
+    account_map: list[AccountMapEntry],
+    access_report: AccessReport,
+    summaries_snapshot: dict[str, Any] | None = None,
+    recommendations_snapshot: dict[str, Any] | None = None,
+    normalized_recommendations: list[NormalizedRecommendation] | None = None,
+    detail_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the diff-friendly totals artifact for the current run."""
+    environment_counts = {"prod": 0, "nonprod": 0, "unknown": 0}
+    for account in account_map:
+        environment_counts[account.environment] += 1
+
+    normalized_recommendation_list = normalized_recommendations or []
+    total_normalized_monthly_savings = round(
+        sum(item.estimated_monthly_savings or 0.0 for item in normalized_recommendation_list),
+        2,
+    )
+
+    return {
+        "run": {
+            "account_id": access_report.account_id,
+            "region": region,
+            "rate_limit_safe_mode": rate_limit_safe_mode,
+        },
+        "accounts": {
+            "total": len(account_map),
+            "prod": environment_counts["prod"],
+            "nonprod": environment_counts["nonprod"],
+            "unknown": environment_counts["unknown"],
+        },
+        "findings": {
+            "total": 0,
+        },
+        "coh": {
+            "summary_count": (
+                0 if summaries_snapshot is None else summaries_snapshot.get("itemCount", 0)
+            ),
+            "recommendation_count": (
+                0
+                if recommendations_snapshot is None
+                else recommendations_snapshot.get("itemCount", 0)
+            ),
+            "normalized_recommendation_count": len(normalized_recommendation_list),
+            "detail_error_count": len(detail_errors or []),
+            "estimated_total_deduped_savings": (
+                None
+                if summaries_snapshot is None
+                else summaries_snapshot.get("estimatedTotalDedupedSavings")
+            ),
+            "normalized_estimated_monthly_savings": total_normalized_monthly_savings,
+        },
+        "access_report": {
+            "check_count": len(access_report.checks),
+            "degraded_check_count": len(
+                [check for check in access_report.checks if check.status == "DEGRADED"]
+            ),
+            "module_count": len(access_report.modules),
+            "degraded_module_count": len(
+                [module for module in access_report.modules if module.status == "DEGRADED"]
+            ),
+        },
+    }
+
+
+def _write_summary_output(
+    output_dir: Path,
+    *,
+    region: str,
+    rate_limit_safe_mode: bool,
+    account_map: list[AccountMapEntry],
+    access_report: AccessReport,
+    summaries_snapshot: dict[str, Any] | None = None,
+    recommendations_snapshot: dict[str, Any] | None = None,
+    normalized_recommendations: list[NormalizedRecommendation] | None = None,
+    detail_errors: list[str] | None = None,
+) -> Path:
+    """Persist the summary totals artifact under out/summary.json."""
+    summary_path = _artifact_output_dir(output_dir) / "summary.json"
+    payload = _build_summary_payload(
+        region=region,
+        rate_limit_safe_mode=rate_limit_safe_mode,
+        account_map=account_map,
+        access_report=access_report,
+        summaries_snapshot=summaries_snapshot,
+        recommendations_snapshot=recommendations_snapshot,
+        normalized_recommendations=normalized_recommendations,
+        detail_errors=detail_errors,
+    )
+    return _write_json_snapshot(summary_path, payload)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build and return the CLI argument parser."""
     parser = argparse.ArgumentParser(
@@ -593,6 +702,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output-dir",
         help="Directory where generated reports and JSON artifacts are written.",
+    )
+    run_parser.add_argument(
+        "--rate-limit-safe-mode",
+        action="store_true",
+        help="Reduce request burstiness and retry throttled Cost Optimization Hub calls.",
     )
     run_parser.add_argument(
         "--enable-coh",
@@ -678,6 +792,7 @@ def handle_run(args: argparse.Namespace) -> int:
         session_name=args.session_name,
         check_identity=args.check_identity,
         enable_coh=args.enable_coh,
+        rate_limit_safe_mode=args.rate_limit_safe_mode,
         output_dir=args.output_dir,
     )
     if resolved.role_arn is None:
@@ -697,6 +812,7 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"region={resolved.region}")
     print(f"session_name={resolved.session_name}")
     print(f"enable_coh={resolved.enable_coh}")
+    print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
     _print_region_coverage(region_coverage)
 
     caller_identity: dict[str, Any] | None = None
@@ -706,7 +822,11 @@ def handle_run(args: argparse.Namespace) -> int:
         print(json.dumps(caller_identity, indent=2, default=str))
 
     if resolved.enable_coh:
-        status = enable_cost_optimization_hub(session, region_name=resolved.region)
+        status = enable_cost_optimization_hub(
+            session,
+            region_name=resolved.region,
+            rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+        )
         print(f"cost_optimization_hub_status={status}")
 
     access_report = _build_access_report(
@@ -724,6 +844,7 @@ def handle_run(args: argparse.Namespace) -> int:
         session,
         output_dir=output_dir,
         region_name=BILLING_CONTROL_PLANE_REGION,
+        rate_limit_safe_mode=resolved.rate_limit_safe_mode,
     )
     (
         coh_normalized_path,
@@ -734,6 +855,7 @@ def handle_run(args: argparse.Namespace) -> int:
         recommendations_snapshot=coh_recommendations_snapshot,
         output_dir=output_dir,
         region_name=BILLING_CONTROL_PLANE_REGION,
+        rate_limit_safe_mode=resolved.rate_limit_safe_mode,
     )
     coh_csv_export_path, coh_json_export_path = _export_coh_recommendations(
         coh_normalized_recommendations,
@@ -774,10 +896,22 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
     )
+    summary_path = _write_summary_output(
+        output_dir,
+        region=resolved.region,
+        rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+        account_map=account_map,
+        access_report=access_report,
+        summaries_snapshot=coh_summaries_snapshot,
+        recommendations_snapshot=coh_recommendations_snapshot,
+        normalized_recommendations=coh_normalized_recommendations,
+        detail_errors=coh_detail_errors,
+    )
     print(f"account_count={len(account_map)}")
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
+    print(f"summary_path={summary_path}")
 
     return 0
 
@@ -805,6 +939,13 @@ def handle_demo(args: argparse.Namespace) -> int:
         account_id="Demo Fixture",
         access_report=access_report,
     )
+    summary_path = _write_summary_output(
+        output_dir,
+        region=file_config.region,
+        rate_limit_safe_mode=file_config.rate_limit_safe_mode,
+        account_map=account_map,
+        access_report=access_report,
+    )
 
     print("Running finops-pack in demo mode")
     print(f"fixture_dir={fixture_dir}")
@@ -813,6 +954,7 @@ def handle_demo(args: argparse.Namespace) -> int:
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
+    print(f"summary_path={summary_path}")
 
     return 0
 

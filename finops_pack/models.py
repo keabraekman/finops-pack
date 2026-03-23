@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
+
+
+def build_stable_finding_id(*, resource_id: str, finding_type: str, region: str) -> str:
+    """Build a stable finding ID from the fields that identify the same issue over time."""
+    digest = hashlib.sha256(f"{resource_id}|{finding_type}|{region}".encode()).hexdigest()
+    return f"finding-{digest}"
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
@@ -132,9 +139,17 @@ class NormalizedRecommendation:
 
 @dataclass(config=ConfigDict(extra="forbid"))
 class Finding:
-    finding_id: str
     finding_type: str
     severity: Literal["low", "medium", "high", "critical"]
     resource: Resource
     recommendation: Recommendation
+    finding_id: str | None = None
     notes: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.finding_id is None:
+            self.finding_id = build_stable_finding_id(
+                resource_id=self.resource.resource_id,
+                finding_type=self.finding_type,
+                region=self.resource.region,
+            )

@@ -22,6 +22,7 @@ class AppConfig:
     session_name: str = "finops-pack"
     check_identity: bool = False
     enable_coh: bool = False
+    rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
     prod_account_ids: list[str] = field(default_factory=list)
@@ -99,6 +100,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "session_name",
         "check_identity",
         "enable_coh",
+        "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
         "prod_account_ids",
@@ -163,6 +165,7 @@ def merge_run_config(
     session_name: str | None,
     check_identity: bool,
     enable_coh: bool,
+    rate_limit_safe_mode: bool,
     output_dir: str | None,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
@@ -180,6 +183,7 @@ def merge_run_config(
             session_name=session_name if session_name is not None else file_config.session_name,
             check_identity=check_identity or file_config.check_identity,
             enable_coh=enable_coh or file_config.enable_coh,
+            rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,
             demo_fixture_dir=file_config.demo_fixture_dir,
             prod_account_ids=file_config.prod_account_ids,

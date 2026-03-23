@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+import time
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import boto3
@@ -23,6 +25,90 @@ COH_DETAIL_TOP_N = 20
 COMMITMENT_ACTION_TYPES = {"PurchaseSavingsPlans", "PurchaseReservedInstances"}
 RIGHTSIZING_ACTION_TYPES = {"Delete", "MigrateToGraviton", "Rightsize", "ScaleIn", "Stop"}
 COMMITMENT_TYPE_MARKERS = ("Reserved", "SavingsPlans")
+THROTTLING_ERROR_CODES = {
+    "RequestLimitExceeded",
+    "SlowDown",
+    "ThrottledException",
+    "Throttling",
+    "ThrottlingException",
+    "TooManyRequestsException",
+}
+DEFAULT_MAX_RETRY_ATTEMPTS = 4
+SAFE_MODE_MAX_RETRY_ATTEMPTS = 6
+DEFAULT_BACKOFF_SECONDS = 0.25
+SAFE_MODE_BACKOFF_SECONDS = 0.5
+SAFE_MODE_PAGE_SIZE = 20
+SAFE_MODE_REQUEST_DELAY_SECONDS = 0.2
+
+
+def _is_throttling_error(exc: ClientError) -> bool:
+    code = exc.response.get("Error", {}).get("Code")
+    return isinstance(code, str) and code in THROTTLING_ERROR_CODES
+
+
+def _call_with_backoff(
+    request: Callable[[], Any],
+    *,
+    rate_limit_safe_mode: bool,
+) -> Any:
+    """Retry throttled API calls with exponential backoff."""
+    max_attempts = (
+        SAFE_MODE_MAX_RETRY_ATTEMPTS if rate_limit_safe_mode else DEFAULT_MAX_RETRY_ATTEMPTS
+    )
+    base_delay = SAFE_MODE_BACKOFF_SECONDS if rate_limit_safe_mode else DEFAULT_BACKOFF_SECONDS
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return request()
+        except ClientError as exc:
+            if not _is_throttling_error(exc) or attempt == max_attempts:
+                raise
+            time.sleep(base_delay * (2 ** (attempt - 1)))
+
+    raise RuntimeError("Retry loop exited unexpectedly.")
+
+
+def _paginate(
+    request_page: Callable[[dict[str, object]], dict[str, Any]],
+    *,
+    request_kwargs: dict[str, object],
+    rate_limit_safe_mode: bool,
+    operation_name: str,
+) -> list[dict[str, Any]]:
+    """Collect API pages while guarding against repeated nextToken values."""
+    next_token: str | None = None
+    pages: list[dict[str, Any]] = []
+    seen_tokens: set[str] = set()
+
+    while True:
+        page_request = dict(request_kwargs)
+        if rate_limit_safe_mode and "maxResults" not in page_request:
+            page_request["maxResults"] = SAFE_MODE_PAGE_SIZE
+        if next_token is not None:
+            page_request["nextToken"] = next_token
+
+        page = cast(
+            dict[str, Any],
+            _call_with_backoff(
+                lambda request_kwargs=page_request: request_page(request_kwargs),
+                rate_limit_safe_mode=rate_limit_safe_mode,
+            ),
+        )
+        pages.append(page)
+
+        raw_next_token = page.get("nextToken")
+        if not isinstance(raw_next_token, str) or not raw_next_token:
+            break
+        if raw_next_token in seen_tokens:
+            raise RuntimeError(
+                f"{operation_name} returned a repeated nextToken and pagination was aborted."
+            )
+        seen_tokens.add(raw_next_token)
+        next_token = raw_next_token
+        if rate_limit_safe_mode:
+            time.sleep(SAFE_MODE_REQUEST_DELAY_SECONDS)
+
+    return pages
 
 
 def update_enrollment_status(
@@ -31,6 +117,7 @@ def update_enrollment_status(
     status: EnrollmentStatus,
     region_name: str = "us-east-1",
     include_member_accounts: bool = False,
+    rate_limit_safe_mode: bool = False,
 ) -> EnrollmentStatus:
     """Update the Cost Optimization Hub enrollment status for the current account."""
     client = session.client("cost-optimization-hub", region_name=region_name)
@@ -40,7 +127,13 @@ def update_enrollment_status(
         update_kwargs["includeMemberAccounts"] = True
 
     try:
-        response = client.update_enrollment_status(**update_kwargs)
+        response = cast(
+            dict[str, Any],
+            _call_with_backoff(
+                lambda: client.update_enrollment_status(**update_kwargs),
+                rate_limit_safe_mode=rate_limit_safe_mode,
+            ),
+        )
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(
             f"Failed to update Cost Optimization Hub enrollment status to {status}: {exc}"
@@ -57,9 +150,15 @@ def enable_cost_optimization_hub(
     session: boto3.Session,
     *,
     region_name: str = "us-east-1",
+    rate_limit_safe_mode: bool = False,
 ) -> EnrollmentStatus:
     """Enable Cost Optimization Hub for the current account."""
-    return update_enrollment_status(session, status="Active", region_name=region_name)
+    return update_enrollment_status(
+        session,
+        status="Active",
+        region_name=region_name,
+        rate_limit_safe_mode=rate_limit_safe_mode,
+    )
 
 
 def list_recommendation_summaries(
@@ -69,10 +168,10 @@ def list_recommendation_summaries(
     filter_expression: dict[str, object] | None = None,
     group_by: str | None = None,
     metrics: dict[str, object] | None = None,
+    rate_limit_safe_mode: bool = False,
 ) -> dict[str, Any]:
     """Collect paginated Cost Optimization Hub recommendation summaries."""
     client = session.client("cost-optimization-hub", region_name=region_name)
-    paginator = client.get_paginator("list_recommendation_summaries")
 
     request_kwargs: dict[str, object] = {}
     if filter_expression is not None:
@@ -83,7 +182,15 @@ def list_recommendation_summaries(
         request_kwargs["metrics"] = metrics
 
     try:
-        pages = list(paginator.paginate(**request_kwargs))
+        pages = _paginate(
+            lambda page_kwargs: cast(
+                dict[str, Any],
+                client.list_recommendation_summaries(**page_kwargs),
+            ),
+            request_kwargs=request_kwargs,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+            operation_name="ListRecommendationSummaries",
+        )
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(
             f"Failed to list Cost Optimization Hub recommendation summaries: {exc}"
@@ -131,10 +238,10 @@ def list_recommendations(
     filter_expression: dict[str, object] | None = None,
     order_by: dict[str, object] | None = None,
     include_all_recommendations: bool = True,
+    rate_limit_safe_mode: bool = False,
 ) -> dict[str, Any]:
     """Collect paginated Cost Optimization Hub recommendations."""
     client = session.client("cost-optimization-hub", region_name=region_name)
-    paginator = client.get_paginator("list_recommendations")
 
     request_kwargs: dict[str, object] = {
         "includeAllRecommendations": include_all_recommendations,
@@ -145,7 +252,15 @@ def list_recommendations(
         request_kwargs["orderBy"] = order_by
 
     try:
-        pages = list(paginator.paginate(**request_kwargs))
+        pages = _paginate(
+            lambda page_kwargs: cast(
+                dict[str, Any],
+                client.list_recommendations(**page_kwargs),
+            ),
+            request_kwargs=request_kwargs,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+            operation_name="ListRecommendations",
+        )
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(f"Failed to list Cost Optimization Hub recommendations: {exc}") from exc
 
@@ -167,12 +282,19 @@ def get_recommendation(
     *,
     recommendation_id: str,
     region_name: str = "us-east-1",
+    rate_limit_safe_mode: bool = False,
 ) -> dict[str, Any]:
     """Fetch a detailed Cost Optimization Hub recommendation."""
     client = session.client("cost-optimization-hub", region_name=region_name)
 
     try:
-        response = client.get_recommendation(recommendationId=recommendation_id)
+        response = cast(
+            dict[str, Any],
+            _call_with_backoff(
+                lambda: client.get_recommendation(recommendationId=recommendation_id),
+                rate_limit_safe_mode=rate_limit_safe_mode,
+            ),
+        )
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(
             f"Failed to get Cost Optimization Hub recommendation {recommendation_id}: {exc}"
@@ -436,6 +558,7 @@ def collect_top_recommendation_details(
     recommendations_snapshot: dict[str, Any],
     top_n: int = COH_DETAIL_TOP_N,
     region_name: str = "us-east-1",
+    rate_limit_safe_mode: bool = False,
 ) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], list[str]]:
     """Fetch COH detail payloads for the top recommendations ranked by monthly savings."""
     if top_n <= 0:
@@ -454,15 +577,18 @@ def collect_top_recommendation_details(
 
     detail_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     detail_errors: list[str] = []
-    for item in selected_items[:top_n]:
+    for index, item in enumerate(selected_items[:top_n]):
         recommendation_id = _coerce_string(item.get("recommendationId"))
         if recommendation_id is None:
             continue
+        if rate_limit_safe_mode and index > 0:
+            time.sleep(SAFE_MODE_REQUEST_DELAY_SECONDS)
         try:
             detail = get_recommendation(
                 session,
                 recommendation_id=recommendation_id,
                 region_name=region_name,
+                rate_limit_safe_mode=rate_limit_safe_mode,
             )
         except RuntimeError as exc:
             detail_errors.append(str(exc))

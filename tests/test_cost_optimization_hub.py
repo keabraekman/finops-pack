@@ -1,8 +1,9 @@
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from botocore.exceptions import ClientError
 
+import finops_pack.aws.cost_optimization_hub as coh
 from finops_pack.aws.cost_optimization_hub import (
     collect_top_recommendation_details,
     enable_cost_optimization_hub,
@@ -40,11 +41,12 @@ def test_enable_cost_optimization_hub_wraps_client_errors() -> None:
 
 
 def test_list_recommendation_summaries_collects_pages_and_deduped_total() -> None:
-    paginator = Mock()
-    paginator.paginate.return_value = [
+    client = Mock()
+    client.list_recommendation_summaries.side_effect = [
         {
             "estimatedTotalDedupedSavings": 125.5,
             "currencyCode": "USD",
+            "nextToken": "token-1",
             "items": [
                 {
                     "group": "EC2",
@@ -65,53 +67,52 @@ def test_list_recommendation_summaries_collects_pages_and_deduped_total() -> Non
             ],
         },
     ]
-    client = Mock()
-    client.get_paginator.return_value = paginator
     session = Mock()
     session.client.return_value = client
 
     snapshot = list_recommendation_summaries(session, region_name="us-east-1")
 
     session.client.assert_called_once_with("cost-optimization-hub", region_name="us-east-1")
-    client.get_paginator.assert_called_once_with("list_recommendation_summaries")
-    paginator.paginate.assert_called_once_with()
+    assert client.list_recommendation_summaries.call_args_list == [
+        call(),
+        call(nextToken="token-1"),
+    ]
     assert snapshot["itemCount"] == 2
     assert snapshot["estimatedTotalDedupedSavings"] == 125.5
     assert len(snapshot["pages"]) == 2
 
 
 def test_list_recommendations_collects_all_pages() -> None:
-    paginator = Mock()
-    paginator.paginate.return_value = [
+    client = Mock()
+    client.list_recommendations.side_effect = [
         {
             "items": [
                 {"recommendationId": "rec-1", "estimatedMonthlySavings": 12.5},
                 {"recommendationId": "rec-2", "estimatedMonthlySavings": 8.0},
-            ]
+            ],
+            "nextToken": "token-2",
         },
         {"items": [{"recommendationId": "rec-3", "estimatedMonthlySavings": 3.0}]},
     ]
-    client = Mock()
-    client.get_paginator.return_value = paginator
     session = Mock()
     session.client.return_value = client
 
     snapshot = list_recommendations(session)
 
-    client.get_paginator.assert_called_once_with("list_recommendations")
-    paginator.paginate.assert_called_once_with(includeAllRecommendations=True)
+    assert client.list_recommendations.call_args_list == [
+        call(includeAllRecommendations=True),
+        call(includeAllRecommendations=True, nextToken="token-2"),
+    ]
     assert snapshot["itemCount"] == 3
     assert len(snapshot["items"]) == 3
 
 
 def test_list_recommendation_summaries_wraps_paginator_errors() -> None:
-    paginator = Mock()
-    paginator.paginate.side_effect = ClientError(
+    client = Mock()
+    client.list_recommendation_summaries.side_effect = ClientError(
         {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
         "ListRecommendationSummaries",
     )
-    client = Mock()
-    client.get_paginator.return_value = paginator
     session = Mock()
     session.client.return_value = client
 
@@ -135,6 +136,57 @@ def test_get_recommendation_fetches_detail_payload() -> None:
     session.client.assert_called_once_with("cost-optimization-hub", region_name="us-east-1")
     client.get_recommendation.assert_called_once_with(recommendationId="rec-1")
     assert response["resourceId"] == "i-123"
+
+
+def test_list_recommendations_retries_throttling(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleep = Mock()
+    monkeypatch.setattr(coh.time, "sleep", sleep)
+
+    client = Mock()
+    client.list_recommendations.side_effect = [
+        ClientError(
+            {"Error": {"Code": "ThrottlingException", "Message": "slow down"}},
+            "ListRecommendations",
+        ),
+        {"items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 12.5}]},
+    ]
+    session = Mock()
+    session.client.return_value = client
+
+    snapshot = list_recommendations(session, rate_limit_safe_mode=True)
+
+    assert snapshot["itemCount"] == 1
+    sleep.assert_called_once_with(0.5)
+
+
+def test_list_recommendations_safe_mode_sets_max_results() -> None:
+    client = Mock()
+    client.list_recommendations.return_value = {
+        "items": [{"recommendationId": "rec-1", "estimatedMonthlySavings": 12.5}]
+    }
+    session = Mock()
+    session.client.return_value = client
+
+    snapshot = list_recommendations(session, rate_limit_safe_mode=True)
+
+    assert snapshot["itemCount"] == 1
+    client.list_recommendations.assert_called_once_with(
+        includeAllRecommendations=True,
+        maxResults=20,
+    )
+
+
+def test_list_recommendation_summaries_rejects_repeated_next_token() -> None:
+    client = Mock()
+    client.list_recommendation_summaries.side_effect = [
+        {"items": [], "nextToken": "token-1"},
+        {"items": [], "nextToken": "token-1"},
+    ]
+    session = Mock()
+    session.client.return_value = client
+
+    with pytest.raises(RuntimeError, match="repeated nextToken"):
+        list_recommendation_summaries(session)
 
 
 def test_collect_top_recommendation_details_fetches_top_n_by_savings() -> None:

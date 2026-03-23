@@ -1,4 +1,11 @@
-from finops_pack import Finding, NormalizedRecommendation, Recommendation, Resource, SavingsRange
+from finops_pack import (
+    Finding,
+    NormalizedRecommendation,
+    Recommendation,
+    Resource,
+    SavingsRange,
+    build_stable_finding_id,
+)
 from finops_pack.models import AccessCheck, AccessReport, ModuleStatus, RegionCoverage
 
 
@@ -33,6 +40,35 @@ def test_models_can_be_created() -> None:
     assert finding.resource.service == "ec2"
     assert finding.recommendation.savings.monthly_low_usd == 10.0
     assert finding.recommendation.savings.annual_high_usd == 300.0
+
+
+def test_finding_generates_stable_id_from_resource_type_and_region() -> None:
+    resource = Resource(
+        provider="aws",
+        account_id="123456789012",
+        region="us-east-1",
+        service="ec2",
+        resource_id="i-1234567890abcdef0",
+    )
+    recommendation = Recommendation(
+        code="stop-idle-ec2",
+        title="Stop idle EC2 instance",
+        summary="This EC2 instance appears underutilized.",
+        action="Stop the instance during off-hours or rightsize it.",
+    )
+
+    finding = Finding(
+        finding_type="idle_resource",
+        severity="medium",
+        resource=resource,
+        recommendation=recommendation,
+    )
+
+    assert finding.finding_id == build_stable_finding_id(
+        resource_id="i-1234567890abcdef0",
+        finding_type="idle_resource",
+        region="us-east-1",
+    )
 
 
 def test_access_report_models_can_be_created() -> None:

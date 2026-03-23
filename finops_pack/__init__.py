@@ -14,6 +14,7 @@ from finops_pack.models import (
     RegionCoverage,
     Resource,
     SavingsRange,
+    build_stable_finding_id,
 )
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "AccountRecord",
     "AccessCheck",
     "AccessReport",
+    "build_stable_finding_id",
     "Finding",
     "ModuleStatus",
     "NormalizedRecommendation",
