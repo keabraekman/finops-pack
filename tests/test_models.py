@@ -6,7 +6,14 @@ from finops_pack import (
     SavingsRange,
     build_stable_finding_id,
 )
-from finops_pack.models import AccessCheck, AccessReport, ModuleStatus, RegionCoverage
+from finops_pack.models import (
+    AccessCheck,
+    AccessReport,
+    ModuleStatus,
+    RegionCoverage,
+    SpendBaseline,
+    SpendBaselineBucket,
+)
 
 
 def test_models_can_be_created() -> None:
@@ -126,3 +133,31 @@ def test_normalized_recommendation_model_can_be_created() -> None:
     assert normalized.recommendation is not None
     assert normalized.recommendation.savings is not None
     assert normalized.recommended_resource_details is not None
+
+
+def test_spend_baseline_model_can_be_created() -> None:
+    baseline = SpendBaseline(
+        window_start="2026-02-22",
+        window_end="2026-03-24",
+        window_days=30,
+        total_amount=321.09,
+        average_daily_amount=10.7,
+        unit="USD",
+        monthly_buckets=[
+            SpendBaselineBucket(
+                start="2026-02-22",
+                end="2026-03-01",
+                amount=88.88,
+                unit="USD",
+            ),
+            SpendBaselineBucket(
+                start="2026-03-01",
+                end="2026-03-24",
+                amount=232.21,
+                unit="USD",
+            ),
+        ],
+    )
+
+    assert baseline.total_amount == 321.09
+    assert len(baseline.monthly_buckets) == 2

@@ -100,6 +100,27 @@ class AccessReport:
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
+class SpendBaselineBucket:
+    start: str
+    end: str
+    amount: float = Field(ge=0)
+    unit: str = "USD"
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class SpendBaseline:
+    window_start: str
+    window_end: str
+    window_days: int = Field(ge=1)
+    granularity: Literal["MONTHLY"] = "MONTHLY"
+    metric: Literal["UnblendedCost"] = "UnblendedCost"
+    total_amount: float = Field(ge=0)
+    average_daily_amount: float = Field(ge=0)
+    unit: str = "USD"
+    monthly_buckets: list[SpendBaselineBucket] = Field(default_factory=list)
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
 class Recommendation:
     code: str
     title: str

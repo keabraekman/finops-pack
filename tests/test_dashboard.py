@@ -3,6 +3,8 @@ from finops_pack.models import (
     NormalizedRecommendation,
     Recommendation,
     SavingsRange,
+    SpendBaseline,
+    SpendBaselineBucket,
 )
 from finops_pack.render.dashboard import render_dashboard_html
 
@@ -72,10 +74,35 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
 
     html = render_dashboard_html(
         account_map,
+        spend_baseline=SpendBaseline(
+            window_start="2026-02-22",
+            window_end="2026-03-24",
+            window_days=30,
+            total_amount=201.45,
+            average_daily_amount=6.72,
+            unit="USD",
+            monthly_buckets=[
+                SpendBaselineBucket(
+                    start="2026-02-22",
+                    end="2026-03-01",
+                    amount=45.0,
+                    unit="USD",
+                ),
+                SpendBaselineBucket(
+                    start="2026-03-01",
+                    end="2026-03-24",
+                    amount=156.45,
+                    unit="USD",
+                ),
+            ],
+        ),
         coh_summary={"estimatedTotalDedupedSavings": 201.45, "currencyCode": "USD"},
         recommendations=recommendations,
     )
 
+    assert "Spend Baseline" in html
+    assert "Average Daily Spend" in html
+    assert "$201.45" in html
     assert "Top Opportunities" in html
     assert "Savings by Category" in html
     assert "Savings by Account" in html
@@ -106,6 +133,28 @@ def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
 
     html = render_dashboard_html(
         account_map,
+        spend_baseline=SpendBaseline(
+            window_start="2026-02-22",
+            window_end="2026-03-24",
+            window_days=30,
+            total_amount=1000.0,
+            average_daily_amount=33.33,
+            unit="USD",
+            monthly_buckets=[
+                SpendBaselineBucket(
+                    start="2026-02-22",
+                    end="2026-03-01",
+                    amount=250.0,
+                    unit="USD",
+                ),
+                SpendBaselineBucket(
+                    start="2026-03-01",
+                    end="2026-03-24",
+                    amount=750.0,
+                    unit="USD",
+                ),
+            ],
+        ),
         coh_summary={"estimatedTotalDedupedSavings": 1000.0, "currencyCode": "USD"},
         recommendations=recommendations,
     )

@@ -5,13 +5,18 @@ from __future__ import annotations
 import shutil
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from finops_pack.models import AccessReport, AccountMapEntry, NormalizedRecommendation
+from finops_pack.models import (
+    AccessReport,
+    AccountMapEntry,
+    NormalizedRecommendation,
+    SpendBaseline,
+)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -60,6 +65,58 @@ def _build_executive_summary(
     if degraded_modules:
         summary += f" {len(degraded_modules)} billing module(s) are degraded."
     return summary
+
+
+def _format_period_display(start: str, end: str) -> str:
+    """Format an inclusive date range from CE's exclusive-end time periods."""
+    start_date = datetime.fromisoformat(start).date()
+    end_date = datetime.fromisoformat(end).date() - timedelta(days=1)
+    return f"{start_date.isoformat()} to {end_date.isoformat()}"
+
+
+def _format_month_label(start: str) -> str:
+    """Format a month label from a CE period start date."""
+    return datetime.fromisoformat(start).strftime("%b %Y")
+
+
+def _build_spend_baseline_context(
+    spend_baseline: SpendBaseline | None,
+    error: str | None = None,
+) -> dict[str, Any] | None:
+    """Build dashboard context for the last-30-days CE spend baseline."""
+    if spend_baseline is None and error is None:
+        return None
+
+    if spend_baseline is None:
+        return {"error": error}
+
+    monthly_buckets = [
+        {
+            "month_label": _format_month_label(bucket.start),
+            "window_display": _format_period_display(bucket.start, bucket.end),
+            "spend_display": _format_currency(bucket.amount, bucket.unit),
+        }
+        for bucket in spend_baseline.monthly_buckets
+    ]
+
+    return {
+        "window_display": _format_period_display(
+            spend_baseline.window_start,
+            spend_baseline.window_end,
+        ),
+        "window_days": spend_baseline.window_days,
+        "total_spend_display": _format_currency(
+            spend_baseline.total_amount,
+            spend_baseline.unit,
+        ),
+        "average_daily_display": _format_currency(
+            spend_baseline.average_daily_amount,
+            spend_baseline.unit,
+        ),
+        "bucket_count": len(spend_baseline.monthly_buckets),
+        "monthly_buckets": monthly_buckets,
+        "error": error,
+    }
 
 
 def _build_coh_context(
@@ -288,9 +345,7 @@ def _build_savings_by_environment(
         bucket["opportunity_count"] += 1
         bucket["estimated_monthly_savings"] += row["estimated_monthly_savings"]
 
-    total_savings = sum(
-        item["estimated_monthly_savings"] for item in environment_totals.values()
-    )
+    total_savings = sum(item["estimated_monthly_savings"] for item in environment_totals.values())
     aggregated_rows = [
         environment_totals["prod"],
         environment_totals["nonprod"],
@@ -324,6 +379,8 @@ def render_dashboard_html(
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
+    spend_baseline: SpendBaseline | None = None,
+    spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
 ) -> str:
@@ -343,6 +400,10 @@ def render_dashboard_html(
         account_id=account_id,
         region=region,
         executive_summary=_build_executive_summary(account_map, access_report),
+        spend_baseline_context=_build_spend_baseline_context(
+            spend_baseline,
+            spend_baseline_error,
+        ),
         account_map={
             "entries": account_map,
             "prod": grouped["prod"],
@@ -366,6 +427,8 @@ def write_dashboard(
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
+    spend_baseline: SpendBaseline | None = None,
+    spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
 ) -> Path:
@@ -378,6 +441,8 @@ def write_dashboard(
             account_id=account_id,
             region=region,
             access_report=access_report,
+            spend_baseline=spend_baseline,
+            spend_baseline_error=spend_baseline_error,
             coh_summary=coh_summary,
             recommendations=recommendations,
         ),

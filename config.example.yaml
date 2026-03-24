@@ -7,6 +7,7 @@ regions:
 session_name: finops-pack
 check_identity: false
 enable_coh: false
+collect_ce_resource_daily: false
 rate_limit_safe_mode: false
 output_dir: output
 demo_fixture_dir: demo/fixtures

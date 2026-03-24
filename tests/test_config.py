@@ -18,6 +18,7 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.session_name == "finops-pack"
     assert cfg.check_identity is False
     assert cfg.enable_coh is False
+    assert cfg.collect_ce_resource_daily is False
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
@@ -39,6 +40,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "session_name: test-session",
                 "check_identity: true",
                 "enable_coh: true",
+                "collect_ce_resource_daily: true",
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
@@ -60,6 +62,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.session_name == "test-session"
     assert cfg.check_identity is True
     assert cfg.enable_coh is True
+    assert cfg.collect_ce_resource_daily is True
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
@@ -76,6 +79,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         session_name="from-file",
         check_identity=False,
         enable_coh=False,
+        collect_ce_resource_daily=False,
         rate_limit_safe_mode=False,
         output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
@@ -91,6 +95,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         session_name="from-cli",
         check_identity=True,
         enable_coh=True,
+        collect_ce_resource_daily=True,
         rate_limit_safe_mode=True,
         output_dir="from-cli-output",
     )
@@ -102,6 +107,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.session_name == "from-cli"
     assert merged.check_identity is True
     assert merged.enable_coh is True
+    assert merged.collect_ce_resource_daily is True
     assert merged.rate_limit_safe_mode is True
     assert merged.output_dir == "from-cli-output"
     assert merged.prod_account_ids == ["111111111111"]
@@ -120,6 +126,7 @@ def test_merge_run_config_requires_role_arn() -> None:
             session_name=None,
             check_identity=False,
             enable_coh=False,
+            collect_ce_resource_daily=False,
             rate_limit_safe_mode=False,
             output_dir=None,
         )

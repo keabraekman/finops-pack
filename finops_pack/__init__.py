@@ -14,6 +14,8 @@ from finops_pack.models import (
     RegionCoverage,
     Resource,
     SavingsRange,
+    SpendBaseline,
+    SpendBaselineBucket,
     build_stable_finding_id,
 )
 
@@ -30,4 +32,6 @@ __all__ = [
     "Recommendation",
     "Resource",
     "SavingsRange",
+    "SpendBaseline",
+    "SpendBaselineBucket",
 ]

@@ -13,6 +13,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.aws.cost_explorer import (
+    RESOURCE_DAILY_WINDOW_DAYS,
+    SPEND_BASELINE_WINDOW_DAYS,
+    collect_resource_daily_costs,
+    collect_spend_baseline,
+)
 from finops_pack.aws.cost_optimization_hub import (
     COH_DETAIL_TOP_N,
     collect_top_recommendation_details,
@@ -31,6 +37,7 @@ from finops_pack.models import (
     ModuleStatus,
     NormalizedRecommendation,
     RegionCoverage,
+    SpendBaseline,
 )
 from finops_pack.render.dashboard import write_dashboard
 from finops_pack.render.exporters import CsvExporter, JsonExporter
@@ -340,6 +347,39 @@ def _print_access_report(access_report: AccessReport) -> None:
         print(f"module_{module.module_id}={module.status}: {module.reason}")
 
 
+def _print_ce_spend_summary(
+    spend_baseline_path: Path,
+    spend_baseline_snapshot: dict[str, Any],
+    spend_baseline: SpendBaseline | None,
+) -> None:
+    """Emit Cost Explorer spend baseline summary lines to stdout."""
+    print(f"ce_total_spend_path={spend_baseline_path}")
+    if spend_baseline is not None:
+        print(f"ce_total_spend_last_30_days={spend_baseline.total_amount}")
+        print(f"ce_average_daily_spend={spend_baseline.average_daily_amount}")
+        print(f"ce_spend_baseline_bucket_count={len(spend_baseline.monthly_buckets)}")
+
+    spend_baseline_error = spend_baseline_snapshot.get("error")
+    if isinstance(spend_baseline_error, str) and spend_baseline_error:
+        print(f"ce_total_spend_error={spend_baseline_error}")
+
+
+def _print_ce_resource_daily_summary(
+    resource_daily_path: Path,
+    resource_daily_snapshot: dict[str, Any],
+) -> None:
+    """Emit resource-level Cost Explorer collection details to stdout."""
+    print(f"ce_resource_daily_path={resource_daily_path}")
+    print(
+        f"ce_resource_daily_time_period_count={resource_daily_snapshot.get('timePeriodCount', 0)}"
+    )
+    print(f"ce_resource_daily_group_count={resource_daily_snapshot.get('groupCount', 0)}")
+
+    resource_daily_error = resource_daily_snapshot.get("error")
+    if isinstance(resource_daily_error, str) and resource_daily_error:
+        print(f"ce_resource_daily_error={resource_daily_error}")
+
+
 def _raw_output_dir(output_dir: Path) -> Path:
     """Return the raw snapshot directory rooted alongside the configured output dir."""
     return _artifact_output_dir(output_dir) / "raw"
@@ -360,6 +400,118 @@ def _write_json_snapshot(destination: Path, payload: dict[str, Any]) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
     return destination
+
+
+def _merge_module_collection_status(
+    access_report: AccessReport,
+    *,
+    module_id: str,
+    reasons: list[str],
+) -> None:
+    """Mark a module degraded when downstream collection hits an error."""
+    module = next((item for item in access_report.modules if item.module_id == module_id), None)
+    if module is None or not reasons:
+        return
+
+    module.status = "DEGRADED"
+    merged_reasons = [module.reason, *reasons]
+    module.reason = "; ".join(
+        reason for reason in dict.fromkeys(merged_reasons) if isinstance(reason, str) and reason
+    )
+
+
+def _collect_ce_spend_baseline(
+    session: Any,
+    *,
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+    rate_limit_safe_mode: bool = False,
+) -> tuple[Path, dict[str, Any], SpendBaseline | None]:
+    """Collect and persist the Cost Explorer spend baseline snapshot."""
+    raw_dir = _raw_output_dir(output_dir)
+    spend_baseline_path = raw_dir / "ce_total_spend.json"
+
+    try:
+        spend_baseline_snapshot, spend_baseline = collect_spend_baseline(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
+    except RuntimeError as exc:
+        spend_baseline_snapshot = {
+            "operation": "GetCostAndUsage",
+            "request": {
+                "TimePeriod": {
+                    "Start": (
+                        datetime.now(UTC).date() - timedelta(days=SPEND_BASELINE_WINDOW_DAYS)
+                    ).isoformat(),
+                    "End": datetime.now(UTC).date().isoformat(),
+                },
+                "Granularity": "MONTHLY",
+                "Metrics": ["UnblendedCost"],
+            },
+            "pages": [],
+            "resultsByTime": [],
+            "bucketCount": 0,
+            "windowDays": SPEND_BASELINE_WINDOW_DAYS,
+            "totalAmount": None,
+            "averageDailyAmount": None,
+            "unit": None,
+            "error": str(exc),
+        }
+        spend_baseline = None
+
+    _write_json_snapshot(spend_baseline_path, spend_baseline_snapshot)
+    return spend_baseline_path, spend_baseline_snapshot, spend_baseline
+
+
+def _collect_ce_resource_daily_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+    rate_limit_safe_mode: bool = False,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist the optional resource-level daily Cost Explorer snapshot."""
+    raw_dir = _raw_output_dir(output_dir)
+    resource_daily_path = raw_dir / "ce_resource_daily.json"
+
+    try:
+        resource_daily_snapshot = collect_resource_daily_costs(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
+    except RuntimeError as exc:
+        resource_daily_snapshot = {
+            "operation": "GetCostAndUsageWithResources",
+            "request": {
+                "TimePeriod": {
+                    "Start": (
+                        datetime.now(UTC).date() - timedelta(days=RESOURCE_DAILY_WINDOW_DAYS)
+                    ).isoformat(),
+                    "End": datetime.now(UTC).date().isoformat(),
+                },
+                "Granularity": "DAILY",
+                "Metrics": ["UnblendedCost"],
+                "Filter": {
+                    "Dimensions": {
+                        "Key": "SERVICE",
+                        "Values": ["Amazon Elastic Compute Cloud - Compute"],
+                    }
+                },
+                "GroupBy": [{"Type": "DIMENSION", "Key": "RESOURCE_ID"}],
+            },
+            "pages": [],
+            "resultsByTime": [],
+            "timePeriodCount": 0,
+            "groupCount": 0,
+            "windowDays": RESOURCE_DAILY_WINDOW_DAYS,
+            "error": str(exc),
+        }
+
+    _write_json_snapshot(resource_daily_path, resource_daily_snapshot)
+    return resource_daily_path, resource_daily_snapshot
 
 
 def _collect_coh_raw_snapshots(
@@ -428,13 +580,6 @@ def _merge_coh_collection_status(
     detail_errors: list[str] | None = None,
 ) -> None:
     """Mark the COH module degraded when the collector itself is blocked."""
-    module = next(
-        (item for item in access_report.modules if item.module_id == "cost_optimization_hub"),
-        None,
-    )
-    if module is None:
-        return
-
     collector_reasons = [
         message
         for message in (
@@ -445,12 +590,11 @@ def _merge_coh_collection_status(
     ]
     if detail_errors:
         collector_reasons.extend(detail_errors)
-    if not collector_reasons:
-        return
-
-    module.status = "DEGRADED"
-    reasons = [module.reason, *collector_reasons]
-    module.reason = "; ".join(dict.fromkeys(reasons))
+    _merge_module_collection_status(
+        access_report,
+        module_id="cost_optimization_hub",
+        reasons=collector_reasons,
+    )
 
 
 def _print_coh_collection_summary(
@@ -498,8 +642,7 @@ def _collect_coh_normalized_recommendations(
         rate_limit_safe_mode=rate_limit_safe_mode,
     )
     normalized_recommendations = [
-        normalize_recommendation(detail, list_item=list_item)
-        for list_item, detail in detail_pairs
+        normalize_recommendation(detail, list_item=list_item) for list_item, detail in detail_pairs
     ]
     JsonExporter().export(normalized_recommendations, normalized_path)
     return normalized_path, normalized_recommendations, detail_errors
@@ -572,6 +715,8 @@ def _build_summary_payload(
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
+    spend_baseline: SpendBaseline | None = None,
+    resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
     recommendations_snapshot: dict[str, Any] | None = None,
     normalized_recommendations: list[NormalizedRecommendation] | None = None,
@@ -602,6 +747,26 @@ def _build_summary_payload(
         },
         "findings": {
             "total": 0,
+        },
+        "ce": {
+            "spend_baseline_total": (
+                None if spend_baseline is None else spend_baseline.total_amount
+            ),
+            "spend_baseline_unit": None if spend_baseline is None else spend_baseline.unit,
+            "spend_baseline_bucket_count": (
+                0 if spend_baseline is None else len(spend_baseline.monthly_buckets)
+            ),
+            "resource_daily_collected": resource_daily_snapshot is not None,
+            "resource_daily_time_period_count": (
+                0
+                if resource_daily_snapshot is None
+                else resource_daily_snapshot.get("timePeriodCount", 0)
+            ),
+            "resource_daily_group_count": (
+                0
+                if resource_daily_snapshot is None
+                else resource_daily_snapshot.get("groupCount", 0)
+            ),
         },
         "coh": {
             "summary_count": (
@@ -641,6 +806,8 @@ def _write_summary_output(
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
+    spend_baseline: SpendBaseline | None = None,
+    resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
     recommendations_snapshot: dict[str, Any] | None = None,
     normalized_recommendations: list[NormalizedRecommendation] | None = None,
@@ -653,6 +820,8 @@ def _write_summary_output(
         rate_limit_safe_mode=rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
+        spend_baseline=spend_baseline,
+        resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=summaries_snapshot,
         recommendations_snapshot=recommendations_snapshot,
         normalized_recommendations=normalized_recommendations,
@@ -715,6 +884,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Enable Cost Optimization Hub in the target account. Requires extra IAM permissions."
         ),
     )
+    run_parser.add_argument(
+        "--collect-ce-resource-daily",
+        action="store_true",
+        help=(
+            "Collect optional Cost Explorer resource-level daily EC2 spend for the last 14 "
+            "completed days and store it under out/raw/ce_resource_daily.json."
+        ),
+    )
 
     demo_parser = subparsers.add_parser(
         "demo",
@@ -754,6 +931,8 @@ def _write_account_outputs(
     region: str,
     account_id: str,
     access_report: AccessReport,
+    spend_baseline: SpendBaseline | None = None,
+    spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: list[NormalizedRecommendation] | None = None,
 ) -> tuple[Path, Path, Path]:
@@ -774,6 +953,8 @@ def _write_account_outputs(
         account_id=account_id,
         region=region,
         access_report=access_report,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=spend_baseline_error,
         coh_summary=coh_summary,
         recommendations=recommendations,
     )
@@ -793,6 +974,7 @@ def handle_run(args: argparse.Namespace) -> int:
         check_identity=args.check_identity,
         enable_coh=args.enable_coh,
         rate_limit_safe_mode=args.rate_limit_safe_mode,
+        collect_ce_resource_daily=args.collect_ce_resource_daily,
         output_dir=args.output_dir,
     )
     if resolved.role_arn is None:
@@ -812,6 +994,7 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"region={resolved.region}")
     print(f"session_name={resolved.session_name}")
     print(f"enable_coh={resolved.enable_coh}")
+    print(f"collect_ce_resource_daily={resolved.collect_ce_resource_daily}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
     _print_region_coverage(region_coverage)
 
@@ -835,6 +1018,25 @@ def handle_run(args: argparse.Namespace) -> int:
         caller_identity=caller_identity,
     )
     output_dir = Path(resolved.output_dir)
+    (
+        spend_baseline_path,
+        spend_baseline_snapshot,
+        spend_baseline,
+    ) = _collect_ce_spend_baseline(
+        session,
+        output_dir=output_dir,
+        region_name=BILLING_CONTROL_PLANE_REGION,
+        rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+    )
+    resource_daily_path: Path | None = None
+    resource_daily_snapshot: dict[str, Any] | None = None
+    if resolved.collect_ce_resource_daily:
+        resource_daily_path, resource_daily_snapshot = _collect_ce_resource_daily_snapshot(
+            session,
+            output_dir=output_dir,
+            region_name=BILLING_CONTROL_PLANE_REGION,
+            rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+        )
     (
         coh_summaries_path,
         coh_summaries_snapshot,
@@ -867,7 +1069,29 @@ def handle_run(args: argparse.Namespace) -> int:
         recommendations_snapshot=coh_recommendations_snapshot,
         detail_errors=coh_detail_errors,
     )
+    spend_baseline_error = spend_baseline_snapshot.get("error")
+    if isinstance(spend_baseline_error, str) and spend_baseline_error:
+        _merge_module_collection_status(
+            access_report,
+            module_id="cost_explorer",
+            reasons=[spend_baseline_error],
+        )
+    if resource_daily_snapshot is not None:
+        resource_daily_error = resource_daily_snapshot.get("error")
+        if isinstance(resource_daily_error, str) and resource_daily_error:
+            _merge_module_collection_status(
+                access_report,
+                module_id="resource_level_costs",
+                reasons=[resource_daily_error],
+            )
     _print_access_report(access_report)
+    _print_ce_spend_summary(
+        spend_baseline_path,
+        spend_baseline_snapshot,
+        spend_baseline,
+    )
+    if resource_daily_path is not None and resource_daily_snapshot is not None:
+        _print_ce_resource_daily_summary(resource_daily_path, resource_daily_snapshot)
     _print_coh_collection_summary(
         coh_summaries_path,
         coh_summaries_snapshot,
@@ -893,6 +1117,10 @@ def handle_run(args: argparse.Namespace) -> int:
         region=resolved.region,
         account_id="AWS Organizations",
         access_report=access_report,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=(
+            spend_baseline_error if isinstance(spend_baseline_error, str) else None
+        ),
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
     )
@@ -902,6 +1130,8 @@ def handle_run(args: argparse.Namespace) -> int:
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
+        spend_baseline=spend_baseline,
+        resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=coh_summaries_snapshot,
         recommendations_snapshot=coh_recommendations_snapshot,
         normalized_recommendations=coh_normalized_recommendations,

@@ -15,6 +15,8 @@ from finops_pack.models import (
     AccountRecord,
     ModuleStatus,
     RegionCoverage,
+    SpendBaseline,
+    SpendBaselineBucket,
 )
 
 
@@ -145,6 +147,115 @@ def test_handle_run_enables_cost_optimization_hub(
             ],
         )
     )
+    collect_spend_baseline = Mock(
+        return_value=(
+            {
+                "operation": "GetCostAndUsage",
+                "request": {
+                    "TimePeriod": {"Start": "2026-02-22", "End": "2026-03-24"},
+                    "Granularity": "MONTHLY",
+                    "Metrics": ["UnblendedCost"],
+                },
+                "pages": [
+                    {
+                        "ResultsByTime": [
+                            {
+                                "TimePeriod": {"Start": "2026-02-22", "End": "2026-03-01"},
+                                "Total": {"UnblendedCost": {"Amount": "84.50", "Unit": "USD"}},
+                            },
+                            {
+                                "TimePeriod": {"Start": "2026-03-01", "End": "2026-03-24"},
+                                "Total": {"UnblendedCost": {"Amount": "115.50", "Unit": "USD"}},
+                            },
+                        ]
+                    }
+                ],
+                "resultsByTime": [
+                    {
+                        "TimePeriod": {"Start": "2026-02-22", "End": "2026-03-01"},
+                        "Total": {"UnblendedCost": {"Amount": "84.50", "Unit": "USD"}},
+                    },
+                    {
+                        "TimePeriod": {"Start": "2026-03-01", "End": "2026-03-24"},
+                        "Total": {"UnblendedCost": {"Amount": "115.50", "Unit": "USD"}},
+                    },
+                ],
+                "bucketCount": 2,
+                "windowDays": 30,
+                "totalAmount": 200.0,
+                "averageDailyAmount": 6.67,
+                "unit": "USD",
+            },
+            SpendBaseline(
+                window_start="2026-02-22",
+                window_end="2026-03-24",
+                window_days=30,
+                total_amount=200.0,
+                average_daily_amount=6.67,
+                unit="USD",
+                monthly_buckets=[
+                    SpendBaselineBucket(
+                        start="2026-02-22",
+                        end="2026-03-01",
+                        amount=84.5,
+                        unit="USD",
+                    ),
+                    SpendBaselineBucket(
+                        start="2026-03-01",
+                        end="2026-03-24",
+                        amount=115.5,
+                        unit="USD",
+                    ),
+                ],
+            ),
+        )
+    )
+    collect_resource_daily_costs = Mock(
+        return_value={
+            "operation": "GetCostAndUsageWithResources",
+            "request": {
+                "TimePeriod": {"Start": "2026-03-10", "End": "2026-03-24"},
+                "Granularity": "DAILY",
+                "Metrics": ["UnblendedCost"],
+                "Filter": {
+                    "Dimensions": {
+                        "Key": "SERVICE",
+                        "Values": ["Amazon Elastic Compute Cloud - Compute"],
+                    }
+                },
+                "GroupBy": [{"Type": "DIMENSION", "Key": "RESOURCE_ID"}],
+            },
+            "pages": [
+                {
+                    "ResultsByTime": [
+                        {
+                            "TimePeriod": {"Start": "2026-03-10", "End": "2026-03-11"},
+                            "Groups": [
+                                {
+                                    "Keys": ["i-1234567890abcdef0"],
+                                    "Metrics": {"UnblendedCost": {"Amount": "4.20", "Unit": "USD"}},
+                                }
+                            ],
+                        }
+                    ]
+                }
+            ],
+            "resultsByTime": [
+                {
+                    "TimePeriod": {"Start": "2026-03-10", "End": "2026-03-11"},
+                    "Groups": [
+                        {
+                            "Keys": ["i-1234567890abcdef0"],
+                            "Metrics": {"UnblendedCost": {"Amount": "4.20", "Unit": "USD"}},
+                        }
+                    ],
+                }
+            ],
+            "timePeriodCount": 1,
+            "groupCount": 1,
+            "windowDays": 14,
+        }
+    )
     list_accounts = Mock(
         return_value=[
             AccountRecord(
@@ -220,8 +331,7 @@ def test_handle_run_enables_cost_optimization_hub(
                         "region": "us-east-1",
                         "resourceId": "i-1234567890abcdef0",
                         "resourceArn": (
-                            "arn:aws:ec2:us-east-1:123456789012:"
-                            "instance/i-1234567890abcdef0"
+                            "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
                         ),
                         "currentResourceType": "Ec2Instance",
                         "recommendedResourceType": "Ec2Instance",
@@ -246,6 +356,8 @@ def test_handle_run_enables_cost_optimization_hub(
     monkeypatch.setattr(cli, "assume_role_session", assume_role_session)
     monkeypatch.setattr(cli, "enable_cost_optimization_hub", enable_coh)
     monkeypatch.setattr(cli, "_build_access_report", build_access_report)
+    monkeypatch.setattr(cli, "collect_spend_baseline", collect_spend_baseline)
+    monkeypatch.setattr(cli, "collect_resource_daily_costs", collect_resource_daily_costs)
     monkeypatch.setattr(cli, "list_recommendation_summaries", list_recommendation_summaries)
     monkeypatch.setattr(cli, "list_recommendations", list_recommendations)
     monkeypatch.setattr(
@@ -263,6 +375,7 @@ def test_handle_run_enables_cost_optimization_hub(
         session_name="test-session",
         check_identity=False,
         enable_coh=True,
+        collect_ce_resource_daily=True,
         rate_limit_safe_mode=True,
         config=str(config_file),
         output_dir=str(tmp_path / "output"),
@@ -284,6 +397,16 @@ def test_handle_run_enables_cost_optimization_hub(
     )
     list_accounts.assert_called_once_with(session)
     build_access_report.assert_called_once()
+    collect_spend_baseline.assert_called_once_with(
+        session,
+        region_name="us-east-1",
+        rate_limit_safe_mode=True,
+    )
+    collect_resource_daily_costs.assert_called_once_with(
+        session,
+        region_name="us-east-1",
+        rate_limit_safe_mode=True,
+    )
     list_recommendation_summaries.assert_called_once_with(
         session,
         region_name="us-east-1",
@@ -304,8 +427,11 @@ def test_handle_run_enables_cost_optimization_hub(
 
     output = capsys.readouterr().out
     assert "enable_coh=True" in output
+    assert "collect_ce_resource_daily=True" in output
     assert "rate_limit_safe_mode=True" in output
     assert "region_coverage=us-west-2,us-east-1" in output
+    assert "ce_total_spend_last_30_days=200.0" in output
+    assert "ce_resource_daily_group_count=1" in output
     assert "coh_estimated_total_deduped_savings=42.5" in output
     assert "coh_recommendation_count=1" in output
     assert "coh_normalized_recommendation_count=1" in output
@@ -325,6 +451,9 @@ def test_handle_run_enables_cost_optimization_hub(
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary["run"]["rate_limit_safe_mode"] is True
     assert summary["accounts"]["total"] == 1
+    assert summary["ce"]["spend_baseline_total"] == 200.0
+    assert summary["ce"]["resource_daily_collected"] is True
+    assert summary["ce"]["resource_daily_group_count"] == 1
     assert summary["coh"]["recommendation_count"] == 1
     assert summary["coh"]["normalized_recommendation_count"] == 1
     assert summary["coh"]["normalized_estimated_monthly_savings"] == 42.5
@@ -332,6 +461,14 @@ def test_handle_run_enables_cost_optimization_hub(
         (tmp_path / "out" / "raw" / "coh_summaries.json").read_text(encoding="utf-8")
     )
     assert coh_summaries["estimatedTotalDedupedSavings"] == 42.5
+    ce_total_spend = json.loads(
+        (tmp_path / "out" / "raw" / "ce_total_spend.json").read_text(encoding="utf-8")
+    )
+    assert ce_total_spend["totalAmount"] == 200.0
+    ce_resource_daily = json.loads(
+        (tmp_path / "out" / "raw" / "ce_resource_daily.json").read_text(encoding="utf-8")
+    )
+    assert ce_resource_daily["groupCount"] == 1
     coh_recommendations = json.loads(
         (tmp_path / "out" / "raw" / "coh_recommendations.json").read_text(encoding="utf-8")
     )
@@ -343,8 +480,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert normalized_recommendations[0]["recommendation"]["code"] == "coh-rightsize-ec2instance"
     exports_json = json.loads((tmp_path / "output" / "exports.json").read_text(encoding="utf-8"))
     assert (
-        exports_json[0]["recommended_resource_details"]["ec2Instance"]["instanceType"]
-        == "t3.large"
+        exports_json[0]["recommended_resource_details"]["ec2Instance"]["instanceType"] == "t3.large"
     )
     exports_csv = (tmp_path / "output" / "exports.csv").read_text(encoding="utf-8")
     assert "resourceId,accountId,type,action,estSavings,region" in exports_csv
@@ -352,6 +488,7 @@ def test_handle_run_enables_cost_optimization_hub(
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
+    assert "Spend Baseline" in dashboard_html
     assert "Account Map" in dashboard_html
     assert "Top Opportunities" in dashboard_html
     assert "Savings by Category" in dashboard_html

@@ -21,6 +21,7 @@ uv run mypy .
 uv run pytest
 uv run finops-pack demo
 uv run finops-pack run --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly --external-id replace-me
+uv run finops-pack run --role-arn arn:aws:iam::123456789012:role/finops-pack-readonly --external-id replace-me --collect-ce-resource-daily
 ```
 
 ## AWS setup
@@ -115,6 +116,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 `regions` is an optional fixed region coverage list. If you set it, include the primary `region` in that list. finops-pack reports this as `region_discovery_strategy=fixed` and carries the list into `access_report.json` and the dashboard.
 
+`collect_ce_resource_daily` is an optional flag that enables the last-14-completed-days `GetCostAndUsageWithResources` pull and writes the raw snapshot to `out/raw/ce_resource_daily.json`.
+
 `rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
 
 ```bash
@@ -133,10 +136,12 @@ Successful runs now write:
 - `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region)
 - `output/exports.json`: COH recommendation export with full recommended configuration fields
 - `out/summary.json`: diff-friendly totals for accounts, access readiness, and COH collection results
+- `out/raw/ce_total_spend.json`: raw `GetCostAndUsage` response for the last 30 completed days of spend, grouped by month
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
+- `out/raw/ce_resource_daily.json`: optional raw `GetCostAndUsageWithResources` pages for the last 14 completed days of EC2 resource-level daily spend
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
-- `output/dashboard.html`: HTML dashboard with an Account Map section
+- `output/dashboard.html`: HTML dashboard with Spend Baseline, Access Report, COH notes, and an Account Map section
 
 ## Optional: enable Cost Optimization Hub
 
