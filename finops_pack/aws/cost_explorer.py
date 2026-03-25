@@ -10,7 +10,12 @@ from typing import Any, cast
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from finops_pack.models import SpendBaseline, SpendBaselineBucket
+from finops_pack.models import (
+    DailyCostPoint,
+    ResourceCostSeries,
+    SpendBaseline,
+    SpendBaselineBucket,
+)
 
 UNBLENDED_COST_METRIC = "UnblendedCost"
 SPEND_BASELINE_WINDOW_DAYS = 30
@@ -134,6 +139,55 @@ def _extract_metric_amount(
     return amount, unit if isinstance(unit, str) and unit else None
 
 
+def _extract_group_metric_amount(
+    metric_payload: dict[str, Any],
+    *,
+    metric_name: str = UNBLENDED_COST_METRIC,
+) -> tuple[float, str | None]:
+    metrics = metric_payload.get("Metrics")
+    if not isinstance(metrics, dict):
+        raise RuntimeError("Cost Explorer group response did not include a Metrics object.")
+
+    metric = metrics.get(metric_name)
+    if not isinstance(metric, dict):
+        raise RuntimeError(f"Cost Explorer group response did not include {metric_name}.")
+
+    raw_amount = metric.get("Amount")
+    if raw_amount is None:
+        raise RuntimeError(f"Cost Explorer group response did not include {metric_name}.Amount.")
+
+    try:
+        amount = float(raw_amount)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Cost Explorer group response returned a non-numeric {metric_name}.Amount."
+        ) from exc
+
+    unit = metric.get("Unit")
+    return amount, unit if isinstance(unit, str) and unit else None
+
+
+def _resource_identifier_aliases(identifier: str) -> list[str]:
+    """Return the exact identifier plus stable aliases derived from ARN-like values."""
+    normalized_identifier = identifier.strip()
+    aliases = [normalized_identifier]
+
+    if not normalized_identifier:
+        return aliases
+
+    tail = normalized_identifier.rsplit("/", 1)[-1]
+    if tail and tail not in aliases:
+        aliases.append(tail)
+
+    if normalized_identifier.startswith("arn:"):
+        resource_fragment = normalized_identifier.split(":", maxsplit=5)[-1]
+        arn_tail = resource_fragment.rsplit("/", 1)[-1]
+        if arn_tail and arn_tail not in aliases:
+            aliases.append(arn_tail)
+
+    return aliases
+
+
 def collect_spend_baseline(
     session: boto3.Session,
     *,
@@ -142,9 +196,9 @@ def collect_spend_baseline(
 ) -> tuple[dict[str, Any], SpendBaseline]:
     """Collect a last-30-completed-days spend baseline grouped by month."""
     client = session.client("ce", region_name=region_name)
-    time_period = _rolling_completed_day_window(SPEND_BASELINE_WINDOW_DAYS)
+    request_time_period = _rolling_completed_day_window(SPEND_BASELINE_WINDOW_DAYS)
     request_kwargs: dict[str, object] = {
-        "TimePeriod": time_period,
+        "TimePeriod": request_time_period,
         "Granularity": "MONTHLY",
         "Metrics": [UNBLENDED_COST_METRIC],
     }
@@ -186,8 +240,8 @@ def collect_spend_baseline(
 
     total_amount = round(sum(bucket.amount for bucket in monthly_buckets), 2)
     baseline = SpendBaseline(
-        window_start=time_period["Start"],
-        window_end=time_period["End"],
+        window_start=request_time_period["Start"],
+        window_end=request_time_period["End"],
         window_days=SPEND_BASELINE_WINDOW_DAYS,
         total_amount=total_amount,
         average_daily_amount=round(
@@ -267,3 +321,105 @@ def collect_resource_daily_costs(
         "groupCount": group_count,
         "windowDays": RESOURCE_DAILY_WINDOW_DAYS,
     }
+
+
+def build_resource_cost_series_lookup(
+    resource_daily_snapshot: dict[str, Any],
+) -> dict[str, ResourceCostSeries]:
+    """Transform raw resource-level CE data into an identifier -> daily-series lookup."""
+    aggregated: dict[str, dict[str, Any]] = {}
+    results_by_time = resource_daily_snapshot.get("resultsByTime", [])
+    if not isinstance(results_by_time, list):
+        return {}
+
+    for result in results_by_time:
+        if not isinstance(result, dict):
+            continue
+        time_period = result.get("TimePeriod", {})
+        date = time_period.get("Start")
+        if not isinstance(date, str) or not date:
+            continue
+
+        groups = result.get("Groups", [])
+        if not isinstance(groups, list):
+            continue
+
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            keys = group.get("Keys", [])
+            if not isinstance(keys, list) or not keys or not isinstance(keys[0], str):
+                continue
+
+            identifier = keys[0].strip()
+            if not identifier:
+                continue
+
+            try:
+                amount, unit = _extract_group_metric_amount(group)
+            except RuntimeError:
+                continue
+            series_entry = aggregated.setdefault(
+                identifier,
+                {
+                    "unit": unit or "USD",
+                    "daily_costs": {},
+                },
+            )
+            if unit and not series_entry["unit"]:
+                series_entry["unit"] = unit
+
+            series_entry["daily_costs"][date] = round(
+                float(series_entry["daily_costs"].get(date, 0.0)) + amount,
+                2,
+            )
+
+    alias_lookup: dict[str, ResourceCostSeries] = {}
+    for identifier, payload in aggregated.items():
+        daily_costs = [
+            DailyCostPoint(date=date, amount=amount)
+            for date, amount in sorted(payload["daily_costs"].items())
+        ]
+        total_amount = round(sum(point.amount for point in daily_costs), 2)
+        series = ResourceCostSeries(
+            identifier=identifier,
+            unit=payload["unit"],
+            total_amount=total_amount,
+            daily_costs=daily_costs,
+        )
+        for alias in _resource_identifier_aliases(identifier):
+            alias_lookup.setdefault(alias, series)
+
+    return alias_lookup
+
+
+def find_resource_cost_series(
+    resource_cost_lookup: dict[str, ResourceCostSeries],
+    *,
+    resource_arn: str | None = None,
+    resource_id: str | None = None,
+) -> ResourceCostSeries | None:
+    """Resolve a resource cost series from either a resource ARN or resource ID."""
+    for candidate in (resource_arn, resource_id):
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        for alias in _resource_identifier_aliases(candidate):
+            series = resource_cost_lookup.get(alias)
+            if series is not None:
+                return series
+    return None
+
+
+def format_resource_cost_series(series: ResourceCostSeries | None) -> str:
+    """Render a compact daily cost series for CSV output."""
+    if series is None:
+        return ""
+
+    formatted_days = []
+    for point in series.daily_costs:
+        if series.unit == "USD":
+            amount_display = f"${point.amount:.2f}"
+        else:
+            amount_display = f"{point.amount:.2f} {series.unit}"
+        formatted_days.append(f"{point.date}={amount_display}")
+    return "; ".join(formatted_days)

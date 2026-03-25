@@ -16,8 +16,11 @@ from finops_pack.aws.assume_role import assume_role_session
 from finops_pack.aws.cost_explorer import (
     RESOURCE_DAILY_WINDOW_DAYS,
     SPEND_BASELINE_WINDOW_DAYS,
+    build_resource_cost_series_lookup,
     collect_resource_daily_costs,
     collect_spend_baseline,
+    find_resource_cost_series,
+    format_resource_cost_series,
 )
 from finops_pack.aws.cost_optimization_hub import (
     COH_DETAIL_TOP_N,
@@ -28,7 +31,7 @@ from finops_pack.aws.cost_optimization_hub import (
     normalize_recommendation,
 )
 from finops_pack.collectors.organizations import list_accounts, load_account_records
-from finops_pack.config import load_config, merge_run_config, resolve_regions
+from finops_pack.config import ScheduleConfig, load_config, merge_run_config, resolve_regions
 from finops_pack.iam_policy_generator import render_policy, write_policy
 from finops_pack.models import (
     AccessCheck,
@@ -53,6 +56,7 @@ ACCESS_DENIED_CODES = {
 }
 RECENT_COMPLETED_DAY_OFFSET = 2
 RECENT_COMPLETED_DAY_END_OFFSET = 1
+RESOURCE_COST_14D_COLUMN = "Resource cost (14d)"
 
 
 def _build_region_coverage(resolved_regions: list[str]) -> RegionCoverage:
@@ -63,6 +67,15 @@ def _build_region_coverage(resolved_regions: list[str]) -> RegionCoverage:
         strategy="fixed",
         primary_region=resolved_regions[0],
         regions=resolved_regions,
+    )
+
+
+def _format_schedule_business_hours(schedule: ScheduleConfig) -> str:
+    """Render schedule business hours for CLI and summary output."""
+    return (
+        f"{','.join(schedule.business_hours.days)}@"
+        f"{schedule.business_hours.start_hour:02d}:00-"
+        f"{schedule.business_hours.end_hour:02d}:00"
     )
 
 
@@ -335,6 +348,12 @@ def _print_region_coverage(region_coverage: RegionCoverage) -> None:
     """Emit region coverage details to stdout."""
     print(f"region_discovery_strategy={region_coverage.strategy}")
     print(f"region_coverage={','.join(region_coverage.regions)}")
+
+
+def _print_schedule_config(schedule: ScheduleConfig) -> None:
+    """Emit schedule configuration details to stdout."""
+    print(f"schedule_timezone={schedule.timezone}")
+    print(f"schedule_business_hours={_format_schedule_business_hours(schedule)}")
 
 
 def _print_access_report(access_report: AccessReport) -> None:
@@ -650,28 +669,37 @@ def _collect_coh_normalized_recommendations(
 
 def _build_coh_csv_rows(
     recommendations: list[NormalizedRecommendation],
+    *,
+    resource_cost_lookup: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Map normalized recommendations into the CSV export shape."""
     rows: list[dict[str, Any]] = []
     for recommendation in recommendations:
-        rows.append(
-            {
-                "resourceId": recommendation.resource_id or "",
-                "accountId": recommendation.account_id or "",
-                "type": (
-                    recommendation.current_resource_type
-                    or recommendation.recommended_resource_type
-                    or recommendation.category
-                ),
-                "action": recommendation.action_type or "",
-                "estSavings": (
-                    ""
-                    if recommendation.estimated_monthly_savings is None
-                    else recommendation.estimated_monthly_savings
-                ),
-                "region": recommendation.region or "",
-            }
-        )
+        row = {
+            "resourceId": recommendation.resource_id or "",
+            "accountId": recommendation.account_id or "",
+            "type": (
+                recommendation.current_resource_type
+                or recommendation.recommended_resource_type
+                or recommendation.category
+            ),
+            "action": recommendation.action_type or "",
+            "estSavings": (
+                ""
+                if recommendation.estimated_monthly_savings is None
+                else recommendation.estimated_monthly_savings
+            ),
+            "region": recommendation.region or "",
+        }
+        if resource_cost_lookup:
+            row[RESOURCE_COST_14D_COLUMN] = format_resource_cost_series(
+                find_resource_cost_series(
+                    resource_cost_lookup,
+                    resource_arn=recommendation.resource_arn,
+                    resource_id=recommendation.resource_id,
+                )
+            )
+        rows.append(row)
     return rows
 
 
@@ -679,14 +707,26 @@ def _export_coh_recommendations(
     recommendations: list[NormalizedRecommendation],
     *,
     output_dir: Path,
+    resource_daily_snapshot: dict[str, Any] | None = None,
 ) -> tuple[Path, Path]:
     """Write CSV and JSON recommendation exports for the current run."""
     csv_path = output_dir / "exports.csv"
     json_path = output_dir / "exports.json"
 
-    CsvExporter(
-        fieldnames=["resourceId", "accountId", "type", "action", "estSavings", "region"]
-    ).export(_build_coh_csv_rows(recommendations), csv_path)
+    resource_cost_lookup = (
+        build_resource_cost_series_lookup(resource_daily_snapshot)
+        if resource_daily_snapshot is not None
+        else {}
+    )
+    csv_rows = _build_coh_csv_rows(
+        recommendations,
+        resource_cost_lookup=resource_cost_lookup,
+    )
+    fieldnames = ["resourceId", "accountId", "type", "action", "estSavings", "region"]
+    if any(row.get(RESOURCE_COST_14D_COLUMN) for row in csv_rows):
+        fieldnames.append(RESOURCE_COST_14D_COLUMN)
+
+    CsvExporter(fieldnames=fieldnames).export(csv_rows, csv_path)
     JsonExporter().export(recommendations, json_path)
     return csv_path, json_path
 
@@ -712,6 +752,7 @@ def _print_coh_export_summary(csv_path: Path, json_path: Path) -> None:
 def _build_summary_payload(
     *,
     region: str,
+    schedule: ScheduleConfig,
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
@@ -737,6 +778,14 @@ def _build_summary_payload(
         "run": {
             "account_id": access_report.account_id,
             "region": region,
+            "schedule": {
+                "timezone": schedule.timezone,
+                "business_hours": {
+                    "days": schedule.business_hours.days,
+                    "start_hour": schedule.business_hours.start_hour,
+                    "end_hour": schedule.business_hours.end_hour,
+                },
+            },
             "rate_limit_safe_mode": rate_limit_safe_mode,
         },
         "accounts": {
@@ -803,6 +852,7 @@ def _write_summary_output(
     output_dir: Path,
     *,
     region: str,
+    schedule: ScheduleConfig,
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
@@ -817,6 +867,7 @@ def _write_summary_output(
     summary_path = _artifact_output_dir(output_dir) / "summary.json"
     payload = _build_summary_payload(
         region=region,
+        schedule=schedule,
         rate_limit_safe_mode=rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
@@ -997,6 +1048,7 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"collect_ce_resource_daily={resolved.collect_ce_resource_daily}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
     _print_region_coverage(region_coverage)
+    _print_schedule_config(resolved.schedule)
 
     caller_identity: dict[str, Any] | None = None
     if resolved.check_identity:
@@ -1062,6 +1114,7 @@ def handle_run(args: argparse.Namespace) -> int:
     coh_csv_export_path, coh_json_export_path = _export_coh_recommendations(
         coh_normalized_recommendations,
         output_dir=output_dir,
+        resource_daily_snapshot=resource_daily_snapshot,
     )
     _merge_coh_collection_status(
         access_report,
@@ -1127,6 +1180,7 @@ def handle_run(args: argparse.Namespace) -> int:
     summary_path = _write_summary_output(
         output_dir,
         region=resolved.region,
+        schedule=resolved.schedule,
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
@@ -1172,6 +1226,7 @@ def handle_demo(args: argparse.Namespace) -> int:
     summary_path = _write_summary_output(
         output_dir,
         region=file_config.region,
+        schedule=file_config.schedule,
         rate_limit_safe_mode=file_config.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
@@ -1180,6 +1235,7 @@ def handle_demo(args: argparse.Namespace) -> int:
     print("Running finops-pack in demo mode")
     print(f"fixture_dir={fixture_dir}")
     _print_region_coverage(region_coverage)
+    _print_schedule_config(file_config.schedule)
     print(f"account_count={len(account_map)}")
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")

@@ -22,6 +22,10 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.schedule.timezone == "UTC"
+    assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu", "fri"]
+    assert cfg.schedule.business_hours.start_hour == 9
+    assert cfg.schedule.business_hours.end_hour == 17
     assert cfg.prod_account_ids == []
     assert cfg.nonprod_account_ids == []
 
@@ -44,6 +48,16 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
+                "schedule:",
+                "  timezone: America/Los_Angeles",
+                "  business_hours:",
+                "    days:",
+                "      - mon",
+                "      - tue",
+                "      - wed",
+                "      - thu",
+                "    start_hour: 8",
+                "    end_hour: 18",
                 "prod_account_ids:",
                 "  - '123456789012'",
                 "nonprod_account_ids:",
@@ -66,6 +80,10 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.schedule.timezone == "America/Los_Angeles"
+    assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu"]
+    assert cfg.schedule.business_hours.start_hour == 8
+    assert cfg.schedule.business_hours.end_hour == 18
     assert cfg.prod_account_ids == ["123456789012"]
     assert cfg.nonprod_account_ids == ["210987654321"]
 
@@ -164,6 +182,22 @@ def test_load_config_requires_primary_region_in_regions_list(tmp_path: Path) -> 
     )
 
     with pytest.raises(ValueError, match="region must be included in regions"):
+        load_config(str(config_file))
+
+
+def test_load_config_rejects_invalid_schedule_timezone(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "schedule:",
+                "  timezone: Mars/Olympus",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="valid IANA timezone"):
         load_config(str(config_file))
 
 

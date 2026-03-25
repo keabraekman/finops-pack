@@ -121,6 +121,20 @@ class SpendBaseline:
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
+class DailyCostPoint:
+    date: str
+    amount: float = Field(ge=0)
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class ResourceCostSeries:
+    identifier: str
+    unit: str = "USD"
+    total_amount: float = Field(default=0, ge=0)
+    daily_costs: list[DailyCostPoint] = Field(default_factory=list)
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
 class Recommendation:
     code: str
     title: str

@@ -9,8 +9,10 @@ from finops_pack import (
 from finops_pack.models import (
     AccessCheck,
     AccessReport,
+    DailyCostPoint,
     ModuleStatus,
     RegionCoverage,
+    ResourceCostSeries,
     SpendBaseline,
     SpendBaselineBucket,
 )
@@ -161,3 +163,19 @@ def test_spend_baseline_model_can_be_created() -> None:
 
     assert baseline.total_amount == 321.09
     assert len(baseline.monthly_buckets) == 2
+
+
+def test_resource_cost_series_model_can_be_created() -> None:
+    series = ResourceCostSeries(
+        identifier="i-1234567890abcdef0",
+        unit="USD",
+        total_amount=7.3,
+        daily_costs=[
+            DailyCostPoint(date="2026-03-10", amount=4.2),
+            DailyCostPoint(date="2026-03-11", amount=3.1),
+        ],
+    )
+
+    assert series.identifier == "i-1234567890abcdef0"
+    assert series.total_amount == 7.3
+    assert len(series.daily_costs) == 2

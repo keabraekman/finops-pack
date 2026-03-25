@@ -4,7 +4,13 @@ import pytest
 from botocore.exceptions import ClientError
 
 import finops_pack.aws.cost_explorer as cost_explorer
-from finops_pack.aws.cost_explorer import collect_resource_daily_costs, collect_spend_baseline
+from finops_pack.aws.cost_explorer import (
+    build_resource_cost_series_lookup,
+    collect_resource_daily_costs,
+    collect_spend_baseline,
+    find_resource_cost_series,
+    format_resource_cost_series,
+)
 
 
 def test_collect_spend_baseline_uses_monthly_unblended_cost(
@@ -126,3 +132,43 @@ def test_collect_resource_daily_costs_wraps_client_errors() -> None:
 
     with pytest.raises(RuntimeError, match="Failed to collect Cost Explorer resource-level"):
         collect_resource_daily_costs(session)
+
+
+def test_build_resource_cost_series_lookup_supports_resource_id_and_arn_matching() -> None:
+    lookup = build_resource_cost_series_lookup(
+        {
+            "resultsByTime": [
+                {
+                    "TimePeriod": {"Start": "2026-03-10", "End": "2026-03-11"},
+                    "Groups": [
+                        {
+                            "Keys": ["i-1234567890abcdef0"],
+                            "Metrics": {"UnblendedCost": {"Amount": "4.20", "Unit": "USD"}},
+                        }
+                    ],
+                },
+                {
+                    "TimePeriod": {"Start": "2026-03-11", "End": "2026-03-12"},
+                    "Groups": [
+                        {
+                            "Keys": ["i-1234567890abcdef0"],
+                            "Metrics": {"UnblendedCost": {"Amount": "3.10", "Unit": "USD"}},
+                        }
+                    ],
+                },
+            ]
+        }
+    )
+
+    direct_match = find_resource_cost_series(lookup, resource_id="i-1234567890abcdef0")
+    arn_match = find_resource_cost_series(
+        lookup,
+        resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+    )
+
+    assert direct_match is not None
+    assert arn_match is not None
+    assert direct_match.total_amount == 7.3
+    assert len(direct_match.daily_costs) == 2
+    assert arn_match.identifier == "i-1234567890abcdef0"
+    assert format_resource_cost_series(direct_match) == "2026-03-10=$4.20; 2026-03-11=$3.10"

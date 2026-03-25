@@ -82,6 +82,17 @@ def test_handle_run_enables_cost_optimization_hub(
                 "regions:",
                 "  - us-west-2",
                 "  - us-east-1",
+                "schedule:",
+                "  timezone: America/New_York",
+                "  business_hours:",
+                "    days:",
+                "      - mon",
+                "      - tue",
+                "      - wed",
+                "      - thu",
+                "      - fri",
+                "    start_hour: 8",
+                "    end_hour: 18",
             ]
         ),
         encoding="utf-8",
@@ -430,6 +441,8 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "collect_ce_resource_daily=True" in output
     assert "rate_limit_safe_mode=True" in output
     assert "region_coverage=us-west-2,us-east-1" in output
+    assert "schedule_timezone=America/New_York" in output
+    assert "schedule_business_hours=mon,tue,wed,thu,fri@08:00-18:00" in output
     assert "ce_total_spend_last_30_days=200.0" in output
     assert "ce_resource_daily_group_count=1" in output
     assert "coh_estimated_total_deduped_savings=42.5" in output
@@ -450,6 +463,9 @@ def test_handle_run_enables_cost_optimization_hub(
     assert access_report["region_coverage"]["regions"] == ["us-west-2", "us-east-1"]
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary["run"]["rate_limit_safe_mode"] is True
+    assert summary["run"]["schedule"]["timezone"] == "America/New_York"
+    assert summary["run"]["schedule"]["business_hours"]["start_hour"] == 8
+    assert summary["run"]["schedule"]["business_hours"]["end_hour"] == 18
     assert summary["accounts"]["total"] == 1
     assert summary["ce"]["spend_baseline_total"] == 200.0
     assert summary["ce"]["resource_daily_collected"] is True
@@ -483,8 +499,10 @@ def test_handle_run_enables_cost_optimization_hub(
         exports_json[0]["recommended_resource_details"]["ec2Instance"]["instanceType"] == "t3.large"
     )
     exports_csv = (tmp_path / "output" / "exports.csv").read_text(encoding="utf-8")
-    assert "resourceId,accountId,type,action,estSavings,region" in exports_csv
-    assert "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1" in exports_csv
+    assert "resourceId,accountId,type,action,estSavings,region,Resource cost (14d)" in exports_csv
+    assert (
+        "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1,2026-03-10=$4.20"
+    ) in exports_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html

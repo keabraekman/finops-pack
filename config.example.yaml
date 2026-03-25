@@ -11,5 +11,16 @@ collect_ce_resource_daily: false
 rate_limit_safe_mode: false
 output_dir: output
 demo_fixture_dir: demo/fixtures
+schedule:
+  timezone: UTC
+  business_hours:
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+    start_hour: 9
+    end_hour: 17
 prod_account_ids: []
 nonprod_account_ids: []

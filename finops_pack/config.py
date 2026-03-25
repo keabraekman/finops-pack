@@ -5,10 +5,56 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml  # type: ignore[import-untyped]
 
 DEFAULT_CONFIG_FILES = ("config.yaml", "config.yml")
+DEFAULT_BUSINESS_DAYS = ["mon", "tue", "wed", "thu", "fri"]
+VALID_SCHEDULE_DAYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+
+
+@dataclass
+class BusinessHours:
+    """Business-hours schedule window."""
+
+    days: list[str] = field(default_factory=lambda: list(DEFAULT_BUSINESS_DAYS))
+    start_hour: int = 9
+    end_hour: int = 17
+
+    def __post_init__(self) -> None:
+        normalized_days = [day.strip().lower() for day in self.days]
+        if not normalized_days:
+            raise ValueError("schedule.business_hours.days must not be empty.")
+        invalid_days = [day for day in normalized_days if day not in VALID_SCHEDULE_DAYS]
+        if invalid_days:
+            raise ValueError(
+                "schedule.business_hours.days must only contain: "
+                + ", ".join(sorted(VALID_SCHEDULE_DAYS))
+            )
+        if self.start_hour < 0 or self.start_hour > 23:
+            raise ValueError("schedule.business_hours.start_hour must be between 0 and 23.")
+        if self.end_hour < 1 or self.end_hour > 24:
+            raise ValueError("schedule.business_hours.end_hour must be between 1 and 24.")
+        if self.end_hour <= self.start_hour:
+            raise ValueError("schedule.business_hours.end_hour must be greater than start_hour.")
+        self.days = normalized_days
+
+
+@dataclass
+class ScheduleConfig:
+    """Schedule configuration for business-hours-aware workflows."""
+
+    timezone: str = "UTC"
+    business_hours: BusinessHours = field(default_factory=BusinessHours)
+
+    def __post_init__(self) -> None:
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(
+                f"schedule.timezone is not a valid IANA timezone: {self.timezone}"
+            ) from exc
 
 
 @dataclass
@@ -26,6 +72,7 @@ class AppConfig:
     rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
+    schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     prod_account_ids: list[str] = field(default_factory=list)
     nonprod_account_ids: list[str] = field(default_factory=list)
 
@@ -58,6 +105,63 @@ def _normalize_region_list(value: Any) -> list[str]:
         normalized.append(region)
 
     return normalized
+
+
+def _normalize_business_hours(value: Any) -> BusinessHours:
+    """Normalize configured business-hours values."""
+    if value is None:
+        return BusinessHours()
+    if not isinstance(value, dict):
+        raise ValueError("schedule.business_hours must be a mapping/object.")
+
+    allowed = {"days", "start_hour", "end_hour"}
+    unknown = set(value.keys()) - allowed
+    if unknown:
+        raise ValueError("Unknown schedule.business_hours key(s): " + ", ".join(sorted(unknown)))
+
+    raw_days = value.get("days")
+    if raw_days is None:
+        days = list(DEFAULT_BUSINESS_DAYS)
+    elif not isinstance(raw_days, list) or any(not isinstance(item, str) for item in raw_days):
+        raise ValueError("schedule.business_hours.days must be a list of strings.")
+    else:
+        days = raw_days
+
+    start_hour = value.get("start_hour", 9)
+    if not isinstance(start_hour, int) or isinstance(start_hour, bool):
+        raise ValueError("schedule.business_hours.start_hour must be an integer.")
+
+    end_hour = value.get("end_hour", 17)
+    if not isinstance(end_hour, int) or isinstance(end_hour, bool):
+        raise ValueError("schedule.business_hours.end_hour must be an integer.")
+
+    return BusinessHours(
+        days=days,
+        start_hour=start_hour,
+        end_hour=end_hour,
+    )
+
+
+def _normalize_schedule(value: Any) -> ScheduleConfig:
+    """Normalize configured schedule values."""
+    if value is None:
+        return ScheduleConfig()
+    if not isinstance(value, dict):
+        raise ValueError("schedule must be a mapping/object.")
+
+    allowed = {"timezone", "business_hours"}
+    unknown = set(value.keys()) - allowed
+    if unknown:
+        raise ValueError("Unknown schedule key(s): " + ", ".join(sorted(unknown)))
+
+    timezone = value.get("timezone", "UTC")
+    if not isinstance(timezone, str) or not timezone.strip():
+        raise ValueError("schedule.timezone must be a non-empty string.")
+
+    return ScheduleConfig(
+        timezone=timezone.strip(),
+        business_hours=_normalize_business_hours(value.get("business_hours")),
+    )
 
 
 def _merge_regions(primary_region: str, configured_regions: list[str]) -> list[str]:
@@ -105,6 +209,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
+        "schedule",
         "prod_account_ids",
         "nonprod_account_ids",
     }
@@ -122,6 +227,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         key="nonprod_account_ids",
     )
     normalized["regions"] = _normalize_region_list(normalized.get("regions"))
+    normalized["schedule"] = _normalize_schedule(normalized.get("schedule"))
     return normalized
 
 
@@ -192,6 +298,7 @@ def merge_run_config(
             rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,
             demo_fixture_dir=file_config.demo_fixture_dir,
+            schedule=file_config.schedule,
             prod_account_ids=file_config.prod_account_ids,
             nonprod_account_ids=file_config.nonprod_account_ids,
         )

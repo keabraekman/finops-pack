@@ -118,6 +118,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 `collect_ce_resource_daily` is an optional flag that enables the last-14-completed-days `GetCostAndUsageWithResources` pull and writes the raw snapshot to `out/raw/ce_resource_daily.json`.
 
+`schedule` is an optional config block for business-hours-aware workflows. It defaults to `timezone: UTC` and `Mon-Fri, 9-5`, and you can override both the timezone and business-hours window in `config.yaml`.
+
 `rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
 
 ```bash
@@ -133,7 +135,7 @@ Successful runs now write:
 
 - `output/accounts.json`: normalized account inventory plus prod/nonprod classification metadata
 - `output/access_report.json`: region coverage, best-effort prerequisite checks, and module readiness
-- `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region)
+- `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region, and `Resource cost (14d)` when resource-level CE data is available)
 - `output/exports.json`: COH recommendation export with full recommended configuration fields
 - `out/summary.json`: diff-friendly totals for accounts, access readiness, and COH collection results
 - `out/raw/ce_total_spend.json`: raw `GetCostAndUsage` response for the last 30 completed days of spend, grouped by month
