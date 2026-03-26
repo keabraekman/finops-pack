@@ -120,6 +120,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 `schedule` is an optional config block for business-hours-aware workflows. It defaults to `timezone: UTC` and `Mon-Fri, 9-5`, and you can override both the timezone and business-hours window in `config.yaml`.
 
+Best-effort EC2 inventory now walks the configured `regions` across AWS Organizations accounts and derives each member-account target role by swapping the account ID in the provided `--role-arn`. Accounts or regions that fail are skipped and recorded in `out/raw/ec2_inventory.json`.
+
 `rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
 
 ```bash
@@ -142,7 +144,9 @@ Successful runs now write:
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
 - `out/raw/ce_resource_daily.json`: optional raw `GetCostAndUsageWithResources` pages for the last 14 completed days of EC2 resource-level daily spend
+- `out/raw/ec2_inventory.json`: best-effort EC2 instance inventory across the configured region set and accessible accounts
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
+- `out/schedule/schedule_recs.csv`: stoppable EC2 schedule candidates with off-hours savings estimates when resource-level CE daily data is available
 - `output/dashboard.html`: HTML dashboard with Spend Baseline, Access Report, COH notes, and an Account Map section
 
 ## Optional: enable Cost Optimization Hub

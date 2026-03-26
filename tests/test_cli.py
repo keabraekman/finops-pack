@@ -267,6 +267,64 @@ def test_handle_run_enables_cost_optimization_hub(
             "windowDays": 14,
         }
     )
+    collect_ec2_inventory = Mock(
+        return_value={
+            "operation": "DescribeInstances",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 1,
+            "errorCount": 0,
+            "items": [
+                {
+                    "accountId": "123456789012",
+                    "accountName": "prod-core",
+                    "region": "us-east-1",
+                    "instanceId": "i-1234567890abcdef0",
+                    "instanceArn": (
+                        "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+                    ),
+                    "name": "web-1",
+                    "state": "running",
+                    "instanceType": "m5.large",
+                    "platformDetails": "Linux/UNIX",
+                    "launchTime": "2026-03-01T00:00:00+00:00",
+                    "rootDeviceType": "ebs",
+                    "lifecycle": "",
+                    "tags": {"Name": "web-1"},
+                }
+            ],
+            "errors": [],
+        }
+    )
+    build_schedule_recommendation_rows = Mock(
+        return_value=[
+            {
+                "accountId": "123456789012",
+                "accountName": "prod-core",
+                "region": "us-east-1",
+                "instanceId": "i-1234567890abcdef0",
+                "instanceArn": "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+                "name": "web-1",
+                "state": "running",
+                "instanceType": "m5.large",
+                "platform": "Linux/UNIX",
+                "launchTime": "2026-03-01T00:00:00+00:00",
+                "scheduleTimezone": "America/New_York",
+                "businessHours": "mon,tue,wed,thu,fri@08:00-18:00",
+                "offHoursRatio": 0.7024,
+                "costWindowDays": 14,
+                "recentAvgDailyCost": 4.2,
+                "estimatedOffHoursDailySavings": 2.95,
+                "Resource cost (14d)": "2026-03-10=$4.20",
+                "estimationStatus": "estimated",
+                "estimationReason": (
+                    "Estimated from Cost Explorer resource-level daily cost "
+                    "over the last 14 completed days."
+                ),
+                "candidateReason": "Running, EBS-backed, and not tagged as managed.",
+            }
+        ]
+    )
     list_accounts = Mock(
         return_value=[
             AccountRecord(
@@ -369,6 +427,12 @@ def test_handle_run_enables_cost_optimization_hub(
     monkeypatch.setattr(cli, "_build_access_report", build_access_report)
     monkeypatch.setattr(cli, "collect_spend_baseline", collect_spend_baseline)
     monkeypatch.setattr(cli, "collect_resource_daily_costs", collect_resource_daily_costs)
+    monkeypatch.setattr(cli, "collect_ec2_inventory", collect_ec2_inventory)
+    monkeypatch.setattr(
+        cli,
+        "build_schedule_recommendation_rows",
+        build_schedule_recommendation_rows,
+    )
     monkeypatch.setattr(cli, "list_recommendation_summaries", list_recommendation_summaries)
     monkeypatch.setattr(cli, "list_recommendations", list_recommendations)
     monkeypatch.setattr(
@@ -418,6 +482,15 @@ def test_handle_run_enables_cost_optimization_hub(
         region_name="us-east-1",
         rate_limit_safe_mode=True,
     )
+    collect_ec2_inventory.assert_called_once_with(
+        session,
+        account_records=list_accounts.return_value,
+        regions=["us-west-2", "us-east-1"],
+        role_arn="arn:aws:iam::123456789012:role/TestRole",
+        external_id="external-id",
+        session_name="test-session",
+        current_account_id="123456789012",
+    )
     list_recommendation_summaries.assert_called_once_with(
         session,
         region_name="us-east-1",
@@ -435,6 +508,11 @@ def test_handle_run_enables_cost_optimization_hub(
         region_name="us-east-1",
         rate_limit_safe_mode=True,
     )
+    build_schedule_recommendation_rows.assert_called_once_with(
+        collect_ec2_inventory.return_value,
+        schedule=cli.load_config(str(config_file)).schedule,
+        resource_daily_snapshot=collect_resource_daily_costs.return_value,
+    )
 
     output = capsys.readouterr().out
     assert "enable_coh=True" in output
@@ -450,6 +528,10 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "coh_normalized_recommendation_count=1" in output
     assert "coh_csv_export_path=" in output
     assert "coh_json_export_path=" in output
+    assert "ec2_inventory_instance_count=1" in output
+    assert "schedule_recommendation_count=1" in output
+    assert "schedule_estimated_count=1" in output
+    assert "schedule_recs_path=" in output
     assert "resource_level_enabled=no" in output
     assert "module_resource_level_costs=DEGRADED" in output
     assert "account_count=1" in output
@@ -467,6 +549,11 @@ def test_handle_run_enables_cost_optimization_hub(
     assert summary["run"]["schedule"]["business_hours"]["start_hour"] == 8
     assert summary["run"]["schedule"]["business_hours"]["end_hour"] == 18
     assert summary["accounts"]["total"] == 1
+    assert summary["inventory"]["ec2_instance_count"] == 1
+    assert summary["inventory"]["ec2_inventory_error_count"] == 0
+    assert summary["schedule_recommendations"]["recommendation_count"] == 1
+    assert summary["schedule_recommendations"]["estimated_count"] == 1
+    assert summary["schedule_recommendations"]["needs_ce_resource_level_opt_in_count"] == 0
     assert summary["ce"]["spend_baseline_total"] == 200.0
     assert summary["ce"]["resource_daily_collected"] is True
     assert summary["ce"]["resource_daily_group_count"] == 1
@@ -485,6 +572,10 @@ def test_handle_run_enables_cost_optimization_hub(
         (tmp_path / "out" / "raw" / "ce_resource_daily.json").read_text(encoding="utf-8")
     )
     assert ce_resource_daily["groupCount"] == 1
+    ec2_inventory = json.loads(
+        (tmp_path / "out" / "raw" / "ec2_inventory.json").read_text(encoding="utf-8")
+    )
+    assert ec2_inventory["itemCount"] == 1
     coh_recommendations = json.loads(
         (tmp_path / "out" / "raw" / "coh_recommendations.json").read_text(encoding="utf-8")
     )
@@ -503,6 +594,12 @@ def test_handle_run_enables_cost_optimization_hub(
     assert (
         "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1,2026-03-10=$4.20"
     ) in exports_csv
+    schedule_csv = (tmp_path / "out" / "schedule" / "schedule_recs.csv").read_text(
+        encoding="utf-8"
+    )
+    assert "instanceId,instanceArn,name,state,instanceType,platform" in schedule_csv
+    assert "i-1234567890abcdef0" in schedule_csv
+    assert "estimated" in schedule_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html

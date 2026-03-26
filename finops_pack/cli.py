@@ -12,6 +12,11 @@ from typing import Any
 from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.analyzers.account_classification import classify_accounts
+from finops_pack.analyzers.schedule_recommendations import (
+    ESTIMATED_STATUS,
+    NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS,
+    build_schedule_recommendation_rows,
+)
 from finops_pack.aws.assume_role import assume_role_session
 from finops_pack.aws.cost_explorer import (
     RESOURCE_DAILY_WINDOW_DAYS,
@@ -30,6 +35,7 @@ from finops_pack.aws.cost_optimization_hub import (
     list_recommendations,
     normalize_recommendation,
 )
+from finops_pack.collectors.ec2 import collect_ec2_inventory
 from finops_pack.collectors.organizations import list_accounts, load_account_records
 from finops_pack.config import ScheduleConfig, load_config, merge_run_config, resolve_regions
 from finops_pack.iam_policy_generator import render_policy, write_policy
@@ -37,6 +43,7 @@ from finops_pack.models import (
     AccessCheck,
     AccessReport,
     AccountMapEntry,
+    AccountRecord,
     ModuleStatus,
     NormalizedRecommendation,
     RegionCoverage,
@@ -399,6 +406,28 @@ def _print_ce_resource_daily_summary(
         print(f"ce_resource_daily_error={resource_daily_error}")
 
 
+def _load_account_records_best_effort(
+    session: Any,
+    *,
+    current_account_id: str | None,
+) -> tuple[list[AccountRecord], str | None]:
+    """Load Organizations accounts or fall back to the current account."""
+    try:
+        return list_accounts(session), None
+    except RuntimeError as exc:
+        fallback_account_id = current_account_id or "unknown"
+        return (
+            [
+                AccountRecord(
+                    account_id=fallback_account_id,
+                    name="Current account",
+                    status="ACTIVE",
+                )
+            ],
+            str(exc),
+        )
+
+
 def _raw_output_dir(output_dir: Path) -> Path:
     """Return the raw snapshot directory rooted alongside the configured output dir."""
     return _artifact_output_dir(output_dir) / "raw"
@@ -419,6 +448,40 @@ def _write_json_snapshot(destination: Path, payload: dict[str, Any]) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2, default=str) + "\n", encoding="utf-8")
     return destination
+
+
+def _collect_ec2_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort EC2 inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "ec2_inventory.json"
+    inventory_snapshot = collect_ec2_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_ec2_inventory_summary(inventory_path: Path, inventory_snapshot: dict[str, Any]) -> None:
+    """Emit EC2 inventory output details to stdout."""
+    print(f"ec2_inventory_path={inventory_path}")
+    print(f"ec2_inventory_instance_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"ec2_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
 
 
 def _merge_module_collection_status(
@@ -749,6 +812,66 @@ def _print_coh_export_summary(csv_path: Path, json_path: Path) -> None:
     print(f"coh_json_export_path={json_path}")
 
 
+def _export_schedule_recommendations(
+    inventory_snapshot: dict[str, Any],
+    *,
+    output_dir: Path,
+    schedule: ScheduleConfig,
+    resource_daily_snapshot: dict[str, Any] | None = None,
+) -> tuple[Path, list[dict[str, Any]]]:
+    """Write schedule recommendation CSV output for stoppable EC2 candidates."""
+    schedule_dir = _artifact_output_dir(output_dir) / "schedule"
+    csv_path = schedule_dir / "schedule_recs.csv"
+    rows = build_schedule_recommendation_rows(
+        inventory_snapshot,
+        schedule=schedule,
+        resource_daily_snapshot=resource_daily_snapshot,
+    )
+    fieldnames = [
+        "accountId",
+        "accountName",
+        "region",
+        "instanceId",
+        "instanceArn",
+        "name",
+        "state",
+        "instanceType",
+        "platform",
+        "launchTime",
+        "scheduleTimezone",
+        "businessHours",
+        "offHoursRatio",
+        "costWindowDays",
+        "recentAvgDailyCost",
+        "estimatedOffHoursDailySavings",
+        RESOURCE_COST_14D_COLUMN,
+        "estimationStatus",
+        "estimationReason",
+        "candidateReason",
+    ]
+    CsvExporter(fieldnames=fieldnames).export(rows, csv_path)
+    return csv_path, rows
+
+
+def _print_schedule_recommendation_summary(
+    schedule_csv_path: Path,
+    schedule_rows: list[dict[str, Any]],
+) -> None:
+    """Emit schedule recommendation output details to stdout."""
+    estimated_count = sum(
+        1 for row in schedule_rows if row.get("estimationStatus") == ESTIMATED_STATUS
+    )
+    needs_opt_in_count = sum(
+        1
+        for row in schedule_rows
+        if row.get("estimationStatus") == NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS
+    )
+    print(f"schedule_recs_path={schedule_csv_path}")
+    print(f"schedule_recommendation_count={len(schedule_rows)}")
+    print(f"schedule_estimated_count={estimated_count}")
+    print(f"schedule_needs_ce_resource_level_opt_in_count={needs_opt_in_count}")
+
+
 def _build_summary_payload(
     *,
     region: str,
@@ -756,6 +879,8 @@ def _build_summary_payload(
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
+    ec2_inventory_snapshot: dict[str, Any] | None = None,
+    schedule_recommendations: list[dict[str, Any]] | None = None,
     spend_baseline: SpendBaseline | None = None,
     resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
@@ -769,9 +894,20 @@ def _build_summary_payload(
         environment_counts[account.environment] += 1
 
     normalized_recommendation_list = normalized_recommendations or []
+    schedule_recommendation_list = schedule_recommendations or []
     total_normalized_monthly_savings = round(
         sum(item.estimated_monthly_savings or 0.0 for item in normalized_recommendation_list),
         2,
+    )
+    schedule_estimated_count = sum(
+        1
+        for row in schedule_recommendation_list
+        if row.get("estimationStatus") == ESTIMATED_STATUS
+    )
+    schedule_needs_opt_in_count = sum(
+        1
+        for row in schedule_recommendation_list
+        if row.get("estimationStatus") == NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS
     )
 
     return {
@@ -796,6 +932,21 @@ def _build_summary_payload(
         },
         "findings": {
             "total": 0,
+        },
+        "inventory": {
+            "ec2_instance_count": (
+                0 if ec2_inventory_snapshot is None else ec2_inventory_snapshot.get("itemCount", 0)
+            ),
+            "ec2_inventory_error_count": (
+                0
+                if ec2_inventory_snapshot is None
+                else ec2_inventory_snapshot.get("errorCount", 0)
+            ),
+        },
+        "schedule_recommendations": {
+            "recommendation_count": len(schedule_recommendation_list),
+            "estimated_count": schedule_estimated_count,
+            "needs_ce_resource_level_opt_in_count": schedule_needs_opt_in_count,
         },
         "ce": {
             "spend_baseline_total": (
@@ -856,6 +1007,8 @@ def _write_summary_output(
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
+    ec2_inventory_snapshot: dict[str, Any] | None = None,
+    schedule_recommendations: list[dict[str, Any]] | None = None,
     spend_baseline: SpendBaseline | None = None,
     resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
@@ -871,6 +1024,8 @@ def _write_summary_output(
         rate_limit_safe_mode=rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
+        ec2_inventory_snapshot=ec2_inventory_snapshot,
+        schedule_recommendations=schedule_recommendations,
         spend_baseline=spend_baseline,
         resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=summaries_snapshot,
@@ -1158,17 +1313,45 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     _print_coh_export_summary(coh_csv_export_path, coh_json_export_path)
 
-    account_records = list_accounts(session)
+    account_records, account_collection_error = _load_account_records_best_effort(
+        session,
+        current_account_id=access_report.account_id,
+    )
+    ec2_inventory_path, ec2_inventory_snapshot = _collect_ec2_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    schedule_recs_path, schedule_recommendations = _export_schedule_recommendations(
+        ec2_inventory_snapshot,
+        output_dir=output_dir,
+        schedule=resolved.schedule,
+        resource_daily_snapshot=resource_daily_snapshot,
+    )
+    if isinstance(account_collection_error, str) and account_collection_error:
+        print(f"account_collection_error={account_collection_error}")
+    _print_ec2_inventory_summary(ec2_inventory_path, ec2_inventory_snapshot)
+    _print_schedule_recommendation_summary(schedule_recs_path, schedule_recommendations)
     account_map = classify_accounts(
         account_records,
         prod_account_ids=resolved.prod_account_ids,
         nonprod_account_ids=resolved.nonprod_account_ids,
     )
+    account_output_label = (
+        "AWS Organizations"
+        if account_collection_error is None
+        else access_report.account_id or "Current account"
+    )
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
         account_map,
         output_dir=output_dir,
         region=resolved.region,
-        account_id="AWS Organizations",
+        account_id=account_output_label,
         access_report=access_report,
         spend_baseline=spend_baseline,
         spend_baseline_error=(
@@ -1184,6 +1367,8 @@ def handle_run(args: argparse.Namespace) -> int:
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
+        ec2_inventory_snapshot=ec2_inventory_snapshot,
+        schedule_recommendations=schedule_recommendations,
         spend_baseline=spend_baseline,
         resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=coh_summaries_snapshot,
