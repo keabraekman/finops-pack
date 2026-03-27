@@ -179,6 +179,121 @@ def _build_coh_context(
     }
 
 
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _render_schedule_estimation_status(status: str | None) -> str:
+    if not status:
+        return "Unknown"
+    return status[:1].upper() + status[1:]
+
+
+def _build_schedule_context(
+    schedule_recommendations: Sequence[dict[str, Any]] | None,
+    account_map: Sequence[AccountMapEntry],
+) -> dict[str, Any] | None:
+    """Build dashboard context for non-prod EC2 stop-schedule candidates."""
+    if not schedule_recommendations:
+        return None
+
+    account_lookup = {entry.account_id: entry for entry in account_map}
+    rows: list[dict[str, Any]] = []
+    total_low = 0.0
+    total_likely = 0.0
+    total_high = 0.0
+    estimated_count = 0
+    needs_opt_in_count = 0
+
+    for raw_row in schedule_recommendations:
+        if not isinstance(raw_row, dict):
+            continue
+        account_id = raw_row.get("accountId")
+        if not isinstance(account_id, str) or not account_id:
+            continue
+
+        account_entry = account_lookup.get(account_id)
+        if account_entry is None or account_entry.environment != "nonprod":
+            continue
+
+        likely_savings = _coerce_float(raw_row.get("estimatedOffHoursDailySavings"))
+        low_savings = _coerce_float(raw_row.get("estimatedOffHoursDailySavingsLow"))
+        high_savings = _coerce_float(raw_row.get("estimatedOffHoursDailySavingsHigh"))
+        if likely_savings is not None and low_savings is None:
+            low_savings = round(likely_savings * 0.7, 2)
+        if likely_savings is not None and high_savings is None:
+            high_savings = round(likely_savings, 2)
+
+        raw_estimation_status = raw_row.get("estimationStatus")
+        estimation_status = raw_estimation_status if isinstance(raw_estimation_status, str) else ""
+        if likely_savings is not None:
+            estimated_count += 1
+            total_low += low_savings or 0.0
+            total_likely += likely_savings
+            total_high += high_savings or 0.0
+        elif estimation_status == "needs CE resource-level opt-in":
+            needs_opt_in_count += 1
+
+        off_hours_ratio = _coerce_float(raw_row.get("offHoursRatio"))
+        rows.append(
+            {
+                "account_id": account_id,
+                "account_name": account_entry.name,
+                "instance_id": raw_row.get("instanceId", ""),
+                "instance_arn": raw_row.get("instanceArn", ""),
+                "instance_name": raw_row.get("name", ""),
+                "instance_type": raw_row.get("instanceType", ""),
+                "platform": raw_row.get("platform", ""),
+                "region": raw_row.get("region", ""),
+                "off_hours_ratio_display": (
+                    f"{off_hours_ratio * 100:.1f}%" if off_hours_ratio is not None else "n/a"
+                ),
+                "resource_cost_display": raw_row.get("Resource cost (14d)", ""),
+                "low_display": (
+                    _format_currency(low_savings, "USD") if low_savings is not None else "TBD"
+                ),
+                "likely_display": (
+                    _format_currency(likely_savings, "USD")
+                    if likely_savings is not None
+                    else "TBD"
+                ),
+                "high_display": (
+                    _format_currency(high_savings, "USD") if high_savings is not None else "TBD"
+                ),
+                "likely_savings": likely_savings,
+                "estimation_status": _render_schedule_estimation_status(estimation_status),
+                "estimation_reason": raw_row.get("estimationReason", ""),
+            }
+        )
+
+    if not rows:
+        return None
+
+    rows.sort(
+        key=lambda item: (
+            -(item["likely_savings"] if item["likely_savings"] is not None else -1.0),
+            item["account_name"].lower(),
+            item["instance_id"],
+        )
+    )
+
+    return {
+        "recommendation_count": len(rows),
+        "estimated_count": estimated_count,
+        "needs_opt_in_count": needs_opt_in_count,
+        "total_low_display": _format_currency(total_low, "USD"),
+        "total_likely_display": _format_currency(total_likely, "USD"),
+        "total_high_display": _format_currency(total_high, "USD"),
+        "rows": rows,
+        "notes": [
+            "Non-prod accounts only.",
+            "Bands use low = likely x 0.7 and high = likely x 1.0.",
+        ],
+    }
+
+
 def _format_currency(amount: float, currency_code: str | None) -> str:
     """Format savings values for dashboard display."""
     if currency_code == "USD":
@@ -383,6 +498,7 @@ def render_dashboard_html(
     spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
+    schedule_recommendations: Sequence[dict[str, Any]] | None = None,
 ) -> str:
     """Render the dashboard HTML for account inventory."""
     environment = Environment(
@@ -415,6 +531,7 @@ def render_dashboard_html(
         recommendations=[],
         access_report=access_report,
         coh_context=_build_coh_context(coh_summary, account_map, recommendation_list),
+        schedule_context=_build_schedule_context(schedule_recommendations, account_map),
         show_findings_section=False,
         show_recommendations_section=False,
     )
@@ -431,6 +548,7 @@ def write_dashboard(
     spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
+    schedule_recommendations: Sequence[dict[str, Any]] | None = None,
 ) -> Path:
     """Write the account dashboard HTML and its stylesheet."""
     destination_path = Path(destination)
@@ -445,6 +563,7 @@ def write_dashboard(
             spend_baseline_error=spend_baseline_error,
             coh_summary=coh_summary,
             recommendations=recommendations,
+            schedule_recommendations=schedule_recommendations,
         ),
         encoding="utf-8",
     )

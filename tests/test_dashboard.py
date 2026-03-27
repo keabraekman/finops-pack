@@ -71,6 +71,42 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
             monthly_savings=10.11,
         ),
     ]
+    schedule_recommendations = [
+        {
+            "accountId": "222222222222",
+            "accountName": "sandbox-apps",
+            "region": "us-east-1",
+            "instanceId": "i-nonprod-1",
+            "instanceArn": "arn:aws:ec2:us-east-1:222222222222:instance/i-nonprod-1",
+            "name": "dev-batch",
+            "instanceType": "m5.large",
+            "platform": "Linux/UNIX",
+            "offHoursRatio": 0.7619,
+            "estimatedOffHoursDailySavingsLow": 8.64,
+            "estimatedOffHoursDailySavings": 12.34,
+            "estimatedOffHoursDailySavingsHigh": 12.34,
+            "Resource cost (14d)": "2026-03-10=$14.50",
+            "estimationStatus": "estimated",
+            "estimationReason": "Estimated from Cost Explorer resource-level daily cost.",
+        },
+        {
+            "accountId": "111111111111",
+            "accountName": "prod-core",
+            "region": "us-east-1",
+            "instanceId": "i-prod-1",
+            "instanceArn": "arn:aws:ec2:us-east-1:111111111111:instance/i-prod-1",
+            "name": "prod-batch",
+            "instanceType": "m5.large",
+            "platform": "Linux/UNIX",
+            "offHoursRatio": 0.7619,
+            "estimatedOffHoursDailySavingsLow": 70.0,
+            "estimatedOffHoursDailySavings": 100.0,
+            "estimatedOffHoursDailySavingsHigh": 100.0,
+            "Resource cost (14d)": "2026-03-10=$40.00",
+            "estimationStatus": "estimated",
+            "estimationReason": "Estimated from Cost Explorer resource-level daily cost.",
+        },
+    ]
 
     html = render_dashboard_html(
         account_map,
@@ -98,6 +134,7 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
         ),
         coh_summary={"estimatedTotalDedupedSavings": 201.45, "currencyCode": "USD"},
         recommendations=recommendations,
+        schedule_recommendations=schedule_recommendations,
     )
 
     assert "Spend Baseline" in html
@@ -115,6 +152,14 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "prod-core" in html
     assert "sandbox-apps" in html
     assert "Needs Review" in html
+    assert "Schedule Recommendations" in html
+    assert "Schedule-Only Low Savings" in html
+    assert "Schedule-Only Likely Savings" in html
+    assert "Schedule-Only High Savings" in html
+    assert "dev-batch" in html
+    assert "prod-batch" not in html
+    assert "$8.64" in html
+    assert "$12.34" in html
 
 
 def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:

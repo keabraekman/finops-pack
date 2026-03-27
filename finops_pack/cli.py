@@ -843,7 +843,9 @@ def _export_schedule_recommendations(
         "offHoursRatio",
         "costWindowDays",
         "recentAvgDailyCost",
+        "estimatedOffHoursDailySavingsLow",
         "estimatedOffHoursDailySavings",
+        "estimatedOffHoursDailySavingsHigh",
         RESOURCE_COST_14D_COLUMN,
         "estimationStatus",
         "estimationReason",
@@ -1141,6 +1143,7 @@ def _write_account_outputs(
     spend_baseline_error: str | None = None,
     coh_summary: dict[str, Any] | None = None,
     recommendations: list[NormalizedRecommendation] | None = None,
+    schedule_recommendations: list[dict[str, Any]] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Write JSON and HTML artifacts for classified accounts."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1163,6 +1166,7 @@ def _write_account_outputs(
         spend_baseline_error=spend_baseline_error,
         coh_summary=coh_summary,
         recommendations=recommendations,
+        schedule_recommendations=schedule_recommendations,
     )
 
     return accounts_path, access_report_path, dashboard_path
@@ -1359,6 +1363,7 @@ def handle_run(args: argparse.Namespace) -> int:
         ),
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
+        schedule_recommendations=schedule_recommendations,
     )
     summary_path = _write_summary_output(
         output_dir,

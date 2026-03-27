@@ -15,6 +15,8 @@ from finops_pack.config import ScheduleConfig
 ESTIMATED_STATUS = "estimated"
 NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS = "needs CE resource-level opt-in"
 NO_RECENT_RESOURCE_LEVEL_COST_STATUS = "no recent resource-level cost"
+LOW_SAVINGS_MULTIPLIER = 0.7
+HIGH_SAVINGS_MULTIPLIER = 1.0
 
 
 def _format_schedule_business_hours(schedule: ScheduleConfig) -> str:
@@ -179,8 +181,17 @@ def build_schedule_recommendation_rows(
                 )
             else:
                 avg_daily_cost = round(series.total_amount / window_days, 2)
+                likely_savings = round(avg_daily_cost * off_hours_ratio, 2)
                 row["recentAvgDailyCost"] = avg_daily_cost
-                row["estimatedOffHoursDailySavings"] = round(avg_daily_cost * off_hours_ratio, 2)
+                row["estimatedOffHoursDailySavings"] = likely_savings
+                row["estimatedOffHoursDailySavingsLow"] = round(
+                    likely_savings * LOW_SAVINGS_MULTIPLIER,
+                    2,
+                )
+                row["estimatedOffHoursDailySavingsHigh"] = round(
+                    likely_savings * HIGH_SAVINGS_MULTIPLIER,
+                    2,
+                )
                 row["Resource cost (14d)"] = format_resource_cost_series(series)
                 row["estimationStatus"] = ESTIMATED_STATUS
                 row["estimationReason"] = (

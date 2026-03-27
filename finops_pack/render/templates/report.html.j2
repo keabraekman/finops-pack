@@ -305,6 +305,98 @@
         {% endif %}
       {% endif %}
 
+      {% if schedule_context %}
+        <section class="section">
+          <h2>Schedule Recommendations</h2>
+          <p class="section-note">Non-prod EC2 stop-schedule candidates only. Savings bands are daily and stay blank when resource-level Cost Explorer data is unavailable.</p>
+
+          <div class="summary-grid">
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Non-Prod Candidates</p>
+              <p class="summary-value">{{ schedule_context.recommendation_count }}</p>
+              <p class="split-meta">
+                {{ schedule_context.estimated_count }} estimated · {{ schedule_context.needs_opt_in_count }} need CE opt-in
+              </p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only Low Savings</p>
+              <p class="summary-value">{{ schedule_context.total_low_display }}</p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only Likely Savings</p>
+              <p class="summary-value">{{ schedule_context.total_likely_display }}</p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only High Savings</p>
+              <p class="summary-value">{{ schedule_context.total_high_display }}</p>
+            </article>
+          </div>
+
+          <div class="card">
+            <ul class="note-list">
+              {% for note in schedule_context.notes %}
+                <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Instance</th>
+                    <th scope="col">Region</th>
+                    <th scope="col" class="numeric-cell">Off-Hours</th>
+                    <th scope="col" class="numeric-cell">Low</th>
+                    <th scope="col" class="numeric-cell">Likely</th>
+                    <th scope="col" class="numeric-cell">High</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in schedule_context.rows %}
+                    <tr>
+                      <td>
+                        <div class="table-primary">{{ row.account_name }}</div>
+                        <div class="table-secondary">{{ row.account_id }}</div>
+                      </td>
+                      <td>
+                        <div class="table-primary">{{ row.instance_name or row.instance_id }}</div>
+                        <div class="table-secondary">{{ row.instance_id }}</div>
+                        {% if row.instance_type or row.platform %}
+                          <div class="table-secondary">
+                            {{ row.instance_type }}{% if row.instance_type and row.platform %} · {% endif %}{{ row.platform }}
+                          </div>
+                        {% endif %}
+                      </td>
+                      <td>{{ row.region }}</td>
+                      <td class="numeric-cell">{{ row.off_hours_ratio_display }}</td>
+                      <td class="numeric-cell">{{ row.low_display }}</td>
+                      <td class="numeric-cell">{{ row.likely_display }}</td>
+                      <td class="numeric-cell">{{ row.high_display }}</td>
+                      <td>
+                        <div class="table-primary">{{ row.estimation_status }}</div>
+                        {% if row.estimation_reason %}
+                          <div class="table-secondary">{{ row.estimation_reason }}</div>
+                        {% endif %}
+                        {% if row.resource_cost_display %}
+                          <div class="table-secondary">{{ row.resource_cost_display }}</div>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       {% if access_report and access_report.region_coverage %}
         <section class="section">
           <h2>Region Coverage</h2>

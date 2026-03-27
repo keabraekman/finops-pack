@@ -314,7 +314,9 @@ def test_handle_run_enables_cost_optimization_hub(
                 "offHoursRatio": 0.7024,
                 "costWindowDays": 14,
                 "recentAvgDailyCost": 4.2,
+                "estimatedOffHoursDailySavingsLow": 2.07,
                 "estimatedOffHoursDailySavings": 2.95,
+                "estimatedOffHoursDailySavingsHigh": 2.95,
                 "Resource cost (14d)": "2026-03-10=$4.20",
                 "estimationStatus": "estimated",
                 "estimationReason": (
@@ -597,8 +599,12 @@ def test_handle_run_enables_cost_optimization_hub(
     schedule_csv = (tmp_path / "out" / "schedule" / "schedule_recs.csv").read_text(
         encoding="utf-8"
     )
-    assert "instanceId,instanceArn,name,state,instanceType,platform" in schedule_csv
+    assert (
+        "estimatedOffHoursDailySavingsLow,estimatedOffHoursDailySavings,"
+        "estimatedOffHoursDailySavingsHigh" in schedule_csv
+    )
     assert "i-1234567890abcdef0" in schedule_csv
+    assert "2.07,2.95,2.95" in schedule_csv
     assert "estimated" in schedule_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html

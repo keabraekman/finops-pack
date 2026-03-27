@@ -122,6 +122,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 Best-effort EC2 inventory now walks the configured `regions` across AWS Organizations accounts and derives each member-account target role by swapping the account ID in the provided `--role-arn`. Accounts or regions that fail are skipped and recorded in `out/raw/ec2_inventory.json`.
 
+Schedule savings bands use the computed off-hours daily estimate as the `likely` value. The `low` band is `likely x 0.7`, and the `high` band is `likely x 1.0`, which intentionally keeps the ceiling conservative instead of extrapolating beyond the observed estimate.
+
 `rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
 
 ```bash
@@ -147,7 +149,7 @@ Successful runs now write:
 - `out/raw/ec2_inventory.json`: best-effort EC2 instance inventory across the configured region set and accessible accounts
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
 - `out/schedule/schedule_recs.csv`: stoppable EC2 schedule candidates with off-hours savings estimates when resource-level CE daily data is available
-- `output/dashboard.html`: HTML dashboard with Spend Baseline, Access Report, COH notes, and an Account Map section
+- `output/dashboard.html`: HTML dashboard with Spend Baseline, COH notes, non-prod schedule recommendations, Access Report, and an Account Map section
 
 ## Optional: enable Cost Optimization Hub
 

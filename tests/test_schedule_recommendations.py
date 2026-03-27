@@ -79,7 +79,9 @@ def test_build_schedule_recommendation_rows_filters_to_conservative_candidates()
     assert row["businessHours"] == "mon,tue,wed,thu,fri@09:00-17:00"
     assert row["offHoursRatio"] == 0.7619
     assert row["recentAvgDailyCost"] == 1.0
+    assert row["estimatedOffHoursDailySavingsLow"] == 0.53
     assert row["estimatedOffHoursDailySavings"] == 0.76
+    assert row["estimatedOffHoursDailySavingsHigh"] == 0.76
     assert row["Resource cost (14d)"] == "2026-03-10=$7.00; 2026-03-11=$7.00"
     assert row["estimationStatus"] == ESTIMATED_STATUS
 
