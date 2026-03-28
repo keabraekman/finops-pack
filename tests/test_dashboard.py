@@ -1,10 +1,17 @@
 from finops_pack.models import (
+    AccessCheck,
+    AccessReport,
     AccountMapEntry,
+    ModuleStatus,
     NormalizedRecommendation,
     Recommendation,
     SavingsRange,
     SpendBaseline,
     SpendBaselineBucket,
+)
+from finops_pack.prerequisites import (
+    CE_RESOURCE_LEVEL_DOC_NOTE,
+    CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
 from finops_pack.render.dashboard import render_dashboard_html
 
@@ -207,3 +214,59 @@ def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
     assert "Opportunity 1" in html
     assert "Opportunity 20" in html
     assert "Opportunity 21" not in html
+
+
+def test_render_dashboard_html_includes_prerequisites_and_remediation_steps() -> None:
+    html = render_dashboard_html(
+        [AccountMapEntry(account_id="111111111111", name="prod-core", environment="prod")],
+        access_report=AccessReport(
+            account_id="111111111111",
+            checks=[
+                AccessCheck(
+                    check_id="cost_optimization_hub",
+                    label="COH enabled?",
+                    enabled=False,
+                    reason="Cost Optimization Hub enrollment status is Inactive.",
+                ),
+                AccessCheck(
+                    check_id="cost_explorer",
+                    label="CE enabled?",
+                    status="ACTIVE",
+                    enabled=True,
+                    reason="Cost Explorer returned billing data for a recent completed day.",
+                ),
+                AccessCheck(
+                    check_id="resource_level_costs",
+                    label="resource-level enabled?",
+                    enabled=False,
+                    reason=(
+                        "Resource-level daily cost data is not enabled or has not populated "
+                        f"for the last 14 days. {CE_RESOURCE_LEVEL_DOC_NOTE}"
+                    ),
+                ),
+            ],
+            modules=[
+                ModuleStatus(
+                    module_id="cost_optimization_hub",
+                    label="Cost Optimization Hub module",
+                    status="DEGRADED",
+                    reason="Cost Optimization Hub enrollment status is Inactive.",
+                ),
+                ModuleStatus(
+                    module_id="resource_level_costs",
+                    label="Resource-level cost module",
+                    status="DEGRADED",
+                    reason=(
+                        "Resource-level daily cost data is not enabled or has not populated "
+                        f"for the last 14 days. {CE_RESOURCE_LEVEL_DOC_NOTE}"
+                    ),
+                ),
+            ],
+        ),
+    )
+
+    assert "Prerequisites" in html
+    assert "Remediation Steps" in html
+    assert CE_RESOURCE_LEVEL_DOC_NOTE in html
+    assert CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE in html
+    assert "Optional fallback modules" in html

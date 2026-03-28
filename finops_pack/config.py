@@ -69,6 +69,8 @@ class AppConfig:
     check_identity: bool = False
     enable_coh: bool = False
     collect_ce_resource_daily: bool = False
+    enable_ce_rightsizing_fallback: bool = False
+    enable_ce_savings_plan_fallback: bool = False
     rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
@@ -206,6 +208,8 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "check_identity",
         "enable_coh",
         "collect_ce_resource_daily",
+        "enable_ce_rightsizing_fallback",
+        "enable_ce_savings_plan_fallback",
         "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
@@ -275,6 +279,8 @@ def merge_run_config(
     enable_coh: bool,
     rate_limit_safe_mode: bool,
     collect_ce_resource_daily: bool,
+    enable_ce_rightsizing_fallback: bool,
+    enable_ce_savings_plan_fallback: bool,
     output_dir: str | None,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
@@ -294,6 +300,12 @@ def merge_run_config(
             enable_coh=enable_coh or file_config.enable_coh,
             collect_ce_resource_daily=(
                 collect_ce_resource_daily or file_config.collect_ce_resource_daily
+            ),
+            enable_ce_rightsizing_fallback=(
+                enable_ce_rightsizing_fallback or file_config.enable_ce_rightsizing_fallback
+            ),
+            enable_ce_savings_plan_fallback=(
+                enable_ce_savings_plan_fallback or file_config.enable_ce_savings_plan_fallback
             ),
             rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,

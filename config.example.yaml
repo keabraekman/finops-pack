@@ -8,6 +8,8 @@ session_name: finops-pack
 check_identity: false
 enable_coh: false
 collect_ce_resource_daily: false
+enable_ce_rightsizing_fallback: false
+enable_ce_savings_plan_fallback: false
 rate_limit_safe_mode: false
 output_dir: output
 demo_fixture_dir: demo/fixtures

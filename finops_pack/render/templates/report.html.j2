@@ -146,6 +146,51 @@
         </section>
       {% endif %}
 
+      {% if prerequisites_context %}
+        <section class="section">
+          <h2>Prerequisites</h2>
+          <p class="section-note">Best-effort detector for the billing features this report depends on.</p>
+
+          <div class="access-grid">
+            {% for item in prerequisites_context["items"] %}
+              <article class="card">
+                <div class="card-header">
+                  <h3>{{ item.label }}</h3>
+                  <span class="badge {{ 'badge-low' if item.status == 'ACTIVE' else 'badge-medium' }}">{{ item.status }}</span>
+                </div>
+                <p class="status-line">Enabled: <strong>{{ item.enabled_label }}</strong></p>
+                <p class="status-note">{{ item.reason }}</p>
+                {% if item.doc_note %}
+                  <p class="status-note"><strong>Doc note:</strong> {{ item.doc_note }}</p>
+                {% endif %}
+                {% if item.guidance %}
+                  <p class="status-note">{{ item.guidance }}</p>
+                {% endif %}
+                <p class="status-meta">Checked via {{ item.checked_in_region }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if remediation_context %}
+        <section class="section">
+          <h2>Remediation Steps</h2>
+          <div class="card">
+            <div class="module-list">
+              {% for step in remediation_context["steps"] %}
+                <div class="module-item">
+                  <div class="module-heading">
+                    <span>{{ loop.index }}. {{ step.title }}</span>
+                  </div>
+                  <p class="status-note">{{ step.detail }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       {% if coh_context %}
         <section class="section">
           <h2>COH Notes</h2>

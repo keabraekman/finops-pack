@@ -19,6 +19,8 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.check_identity is False
     assert cfg.enable_coh is False
     assert cfg.collect_ce_resource_daily is False
+    assert cfg.enable_ce_rightsizing_fallback is False
+    assert cfg.enable_ce_savings_plan_fallback is False
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
@@ -45,6 +47,8 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "check_identity: true",
                 "enable_coh: true",
                 "collect_ce_resource_daily: true",
+                "enable_ce_rightsizing_fallback: true",
+                "enable_ce_savings_plan_fallback: true",
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
@@ -77,6 +81,8 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.check_identity is True
     assert cfg.enable_coh is True
     assert cfg.collect_ce_resource_daily is True
+    assert cfg.enable_ce_rightsizing_fallback is True
+    assert cfg.enable_ce_savings_plan_fallback is True
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
@@ -98,6 +104,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
         check_identity=False,
         enable_coh=False,
         collect_ce_resource_daily=False,
+        enable_ce_rightsizing_fallback=False,
+        enable_ce_savings_plan_fallback=False,
         rate_limit_safe_mode=False,
         output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
@@ -114,6 +122,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
         check_identity=True,
         enable_coh=True,
         collect_ce_resource_daily=True,
+        enable_ce_rightsizing_fallback=True,
+        enable_ce_savings_plan_fallback=True,
         rate_limit_safe_mode=True,
         output_dir="from-cli-output",
     )
@@ -126,6 +136,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.check_identity is True
     assert merged.enable_coh is True
     assert merged.collect_ce_resource_daily is True
+    assert merged.enable_ce_rightsizing_fallback is True
+    assert merged.enable_ce_savings_plan_fallback is True
     assert merged.rate_limit_safe_mode is True
     assert merged.output_dir == "from-cli-output"
     assert merged.prod_account_ids == ["111111111111"]
@@ -145,6 +157,8 @@ def test_merge_run_config_requires_role_arn() -> None:
             check_identity=False,
             enable_coh=False,
             collect_ce_resource_daily=False,
+            enable_ce_rightsizing_fallback=False,
+            enable_ce_savings_plan_fallback=False,
             rate_limit_safe_mode=False,
             output_dir=None,
         )

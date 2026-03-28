@@ -17,6 +17,12 @@ from finops_pack.models import (
     NormalizedRecommendation,
     SpendBaseline,
 )
+from finops_pack.prerequisites import (
+    CE_RESOURCE_LEVEL_DOC_NOTE,
+    CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
+    COH_IMPORT_NOTE,
+    OPTIONAL_CE_FALLBACK_NOTE,
+)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -294,6 +300,130 @@ def _build_schedule_context(
     }
 
 
+def _format_enabled_label(enabled: bool | None) -> str:
+    if enabled is True:
+        return "Yes"
+    if enabled is False:
+        return "No"
+    return "Unknown"
+
+
+def _build_prerequisites_context(access_report: AccessReport | None) -> dict[str, Any] | None:
+    """Build dashboard context for prerequisite readiness checks."""
+    if access_report is None or not access_report.checks:
+        return None
+
+    items: list[dict[str, Any]] = []
+    for check in access_report.checks:
+        doc_note = None
+        guidance = None
+        if check.check_id == "resource_level_costs" and check.enabled is False:
+            doc_note = CE_RESOURCE_LEVEL_DOC_NOTE
+            guidance = CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE
+        items.append(
+            {
+                "label": check.label,
+                "status": check.status,
+                "enabled_label": _format_enabled_label(check.enabled),
+                "reason": check.reason,
+                "checked_in_region": check.checked_in_region,
+                "doc_note": doc_note,
+                "guidance": guidance,
+            }
+        )
+
+    return {"items": items}
+
+
+def _build_remediation_context(
+    access_report: AccessReport | None,
+    *,
+    has_coh_recommendations: bool,
+) -> dict[str, Any] | None:
+    """Build an actionable remediation checklist from degraded prerequisites."""
+    if access_report is None:
+        return None
+
+    steps: list[dict[str, str]] = []
+    seen_titles: set[str] = set()
+
+    def add_step(title: str, detail: str) -> None:
+        if title in seen_titles:
+            return
+        seen_titles.add(title)
+        steps.append({"title": title, "detail": detail})
+
+    check_map = {check.check_id: check for check in access_report.checks}
+    coh_check = check_map.get("cost_optimization_hub")
+    cost_explorer_check = check_map.get("cost_explorer")
+    resource_level_check = check_map.get("resource_level_costs")
+
+    if coh_check is not None:
+        if coh_check.enabled is False:
+            add_step(
+                "Enable Cost Optimization Hub",
+                (
+                    "Rerun with --enable-coh or enroll the account manually so COH can remain "
+                    f"the primary recommendation source. {COH_IMPORT_NOTE}"
+                ),
+            )
+        elif coh_check.enabled is None and "denied" in coh_check.reason.lower():
+            add_step(
+                "Grant Cost Optimization Hub read access",
+                (
+                    "Add cost-optimization-hub:ListEnrollmentStatuses, "
+                    "cost-optimization-hub:ListRecommendationSummaries, and "
+                    "cost-optimization-hub:ListRecommendations to the target role."
+                ),
+            )
+
+    if cost_explorer_check is not None:
+        if cost_explorer_check.enabled is False:
+            add_step(
+                "Wait for Cost Explorer baseline data",
+                (
+                    "Cost Explorer did not have billing data for a recent completed "
+                    "day yet. Retry after billing data populates."
+                ),
+            )
+        elif cost_explorer_check.enabled is None and "denied" in cost_explorer_check.reason.lower():
+            add_step(
+                "Grant Cost Explorer baseline permissions",
+                "Add ce:GetCostAndUsage to the target role so baseline spend collection can run.",
+            )
+
+    if resource_level_check is not None:
+        if resource_level_check.enabled is False:
+            add_step(
+                "Enable Cost Explorer resource-level daily data",
+                f"{CE_RESOURCE_LEVEL_DOC_NOTE} {CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE}",
+            )
+        elif (
+            resource_level_check.enabled is None
+            and "denied" in resource_level_check.reason.lower()
+        ):
+            add_step(
+                "Grant resource-level Cost Explorer permissions",
+                (
+                    "Add ce:GetCostAndUsageWithResources to the target role. "
+                    f"{CE_RESOURCE_LEVEL_DOC_NOTE}"
+                ),
+            )
+
+    if coh_check is not None and (coh_check.enabled is not True or not has_coh_recommendations):
+        add_step("Optional fallback modules", OPTIONAL_CE_FALLBACK_NOTE)
+
+    if not steps:
+        steps.append(
+            {
+                "title": "No immediate remediation detected",
+                "detail": "All tracked prerequisites look active for this run.",
+            }
+        )
+
+    return {"steps": steps}
+
+
 def _format_currency(amount: float, currency_code: str | None) -> str:
     """Format savings values for dashboard display."""
     if currency_code == "USD":
@@ -508,6 +638,11 @@ def render_dashboard_html(
     template = environment.get_template("report.html.j2")
     grouped = _group_accounts(account_map)
     recommendation_list = list(recommendations or [])
+    prerequisites_context = _build_prerequisites_context(access_report)
+    remediation_context = _build_remediation_context(
+        access_report,
+        has_coh_recommendations=bool(recommendation_list),
+    )
 
     return template.render(
         title=title,
@@ -532,6 +667,8 @@ def render_dashboard_html(
         access_report=access_report,
         coh_context=_build_coh_context(coh_summary, account_map, recommendation_list),
         schedule_context=_build_schedule_context(schedule_recommendations, account_map),
+        prerequisites_context=prerequisites_context,
+        remediation_context=remediation_context,
         show_findings_section=False,
         show_recommendations_section=False,
     )

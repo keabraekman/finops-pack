@@ -18,6 +18,7 @@ from finops_pack.models import (
     SpendBaseline,
     SpendBaselineBucket,
 )
+from finops_pack.prerequisites import CE_RESOURCE_LEVEL_DOC_NOTE
 
 
 def test_demo_command_runs(tmp_path: Path) -> None:
@@ -129,7 +130,8 @@ def test_handle_run_enables_cost_optimization_hub(
                     enabled=False,
                     reason=(
                         "Resource-level daily cost data is not enabled or "
-                        "has not populated for the last 14 days."
+                        "has not populated for the last 14 days. "
+                        f"{CE_RESOURCE_LEVEL_DOC_NOTE}"
                     ),
                 ),
             ],
@@ -152,7 +154,8 @@ def test_handle_run_enables_cost_optimization_hub(
                     status="DEGRADED",
                     reason=(
                         "Resource-level daily cost data is not enabled or "
-                        "has not populated for the last 14 days."
+                        "has not populated for the last 14 days. "
+                        f"{CE_RESOURCE_LEVEL_DOC_NOTE}"
                     ),
                 ),
             ],
@@ -453,6 +456,8 @@ def test_handle_run_enables_cost_optimization_hub(
         check_identity=False,
         enable_coh=True,
         collect_ce_resource_daily=True,
+        enable_ce_rightsizing_fallback=False,
+        enable_ce_savings_plan_fallback=False,
         rate_limit_safe_mode=True,
         config=str(config_file),
         output_dir=str(tmp_path / "output"),
@@ -519,6 +524,8 @@ def test_handle_run_enables_cost_optimization_hub(
     output = capsys.readouterr().out
     assert "enable_coh=True" in output
     assert "collect_ce_resource_daily=True" in output
+    assert "enable_ce_rightsizing_fallback=False" in output
+    assert "enable_ce_savings_plan_fallback=False" in output
     assert "rate_limit_safe_mode=True" in output
     assert "region_coverage=us-west-2,us-east-1" in output
     assert "schedule_timezone=America/New_York" in output
@@ -696,6 +703,7 @@ def test_build_access_report_marks_modules_degraded_when_prerequisites_are_missi
     assert module_map["cost_optimization_hub"].status == "DEGRADED"
     assert module_map["resource_level_costs"].status == "DEGRADED"
     assert "not enabled" in module_map["resource_level_costs"].reason
+    assert CE_RESOURCE_LEVEL_DOC_NOTE in module_map["resource_level_costs"].reason
 
 
 def test_build_access_report_marks_unknown_when_permissions_are_missing() -> None:
@@ -741,3 +749,27 @@ def test_build_access_report_marks_unknown_when_permissions_are_missing() -> Non
         assert "denied" in check.reason.lower()
     for module in report.modules:
         assert module.status == "DEGRADED"
+
+
+def test_append_optional_fallback_modules_marks_active_when_cost_explorer_is_ready() -> None:
+    report = AccessReport(
+        checks=[
+            AccessCheck(
+                check_id="cost_explorer",
+                label="CE enabled?",
+                status="ACTIVE",
+                enabled=True,
+                reason="Cost Explorer returned billing data for a recent completed day.",
+            )
+        ]
+    )
+
+    cli._append_optional_fallback_modules(
+        report,
+        enable_ce_rightsizing_fallback=True,
+        enable_ce_savings_plan_fallback=True,
+    )
+
+    module_map = {module.module_id: module for module in report.modules}
+    assert module_map["ce_rightsizing_fallback"].status == "ACTIVE"
+    assert module_map["ce_savings_plan_fallback"].status == "ACTIVE"

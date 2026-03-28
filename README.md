@@ -76,6 +76,9 @@ uv run finops-pack run \
 - Use the AWS Organizations management account when you need organization-wide billing visibility. AWS Billing and Cost Management gives the management account access to its own charges plus member-account charges, while member accounts only see their own cost and usage data.
 - Cost Optimization Hub must be opted in before account recommendations appear. `finops-pack run --enable-coh` can perform the single-account opt-in path if the target role includes the optional COH permissions.
 - Successful runs include an access report that best-effort checks COH enrollment, Cost Explorer readiness, and Cost Explorer resource-level daily data readiness. Modules with missing prerequisites are marked `DEGRADED` with the reason surfaced in both CLI output and the dashboard.
+- The dashboard now includes a `Prerequisites` section and a `Remediation Steps` section so missing billing features are called out alongside the exact next actions.
+- When resource-level daily data is unavailable, finops-pack now surfaces this exact note in the report: `Cost Explorer resource-level daily data is opt-in and only covers the last 14 days.`
+- The report also tells the operator to enable resource-level daily data in Billing and Cost Management preferences before retrying the schedule estimator.
 
 ## Known limits
 
@@ -118,6 +121,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 
 `collect_ce_resource_daily` is an optional flag that enables the last-14-completed-days `GetCostAndUsageWithResources` pull and writes the raw snapshot to `out/raw/ce_resource_daily.json`.
 
+If Cost Explorer resource-level daily data is not enabled, the prerequisites detector marks the schedule estimator as blocked instead of guessing. The exact report note is: `Cost Explorer resource-level daily data is opt-in and only covers the last 14 days.`
+
 `schedule` is an optional config block for business-hours-aware workflows. It defaults to `timezone: UTC` and `Mon-Fri, 9-5`, and you can override both the timezone and business-hours window in `config.yaml`.
 
 Best-effort EC2 inventory now walks the configured `regions` across AWS Organizations accounts and derives each member-account target role by swapping the account ID in the provided `--role-arn`. Accounts or regions that fail are skipped and recorded in `out/raw/ec2_inventory.json`.
@@ -125,6 +130,13 @@ Best-effort EC2 inventory now walks the configured `regions` across AWS Organiza
 Schedule savings bands use the computed off-hours daily estimate as the `likely` value. The `low` band is `likely x 0.7`, and the `high` band is `likely x 1.0`, which intentionally keeps the ceiling conservative instead of extrapolating beyond the observed estimate.
 
 `rate_limit_safe_mode` is an optional guardrail that reduces request burstiness, uses smaller COH page sizes, and retries throttled COH calls with longer backoff.
+
+Optional Cost Explorer fallback modules are also available, but they stay disabled by default so Cost Optimization Hub remains the primary recommendation source:
+
+- `--enable-ce-rightsizing-fallback` collects EC2 rightsizing data from `GetRightsizingRecommendation`
+- `--enable-ce-savings-plan-fallback` starts and fetches Savings Plans purchase recommendations from Cost Explorer
+
+These fallbacks are meant to supplement a degraded COH path, not replace it as the default collection strategy.
 
 ```bash
 uv run finops-pack run \
@@ -146,10 +158,12 @@ Successful runs now write:
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
 - `out/raw/ce_resource_daily.json`: optional raw `GetCostAndUsageWithResources` pages for the last 14 completed days of EC2 resource-level daily spend
+- `out/raw/ce_rightsizing_recommendations.json`: optional fallback snapshot from `GetRightsizingRecommendation`
+- `out/raw/ce_savings_plan_recommendations.json`: optional fallback snapshot from Savings Plans recommendation generation plus fetched detail pages
 - `out/raw/ec2_inventory.json`: best-effort EC2 instance inventory across the configured region set and accessible accounts
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
 - `out/schedule/schedule_recs.csv`: stoppable EC2 schedule candidates with off-hours savings estimates when resource-level CE daily data is available
-- `output/dashboard.html`: HTML dashboard with Spend Baseline, COH notes, non-prod schedule recommendations, Access Report, and an Account Map section
+- `output/dashboard.html`: HTML dashboard with Spend Baseline, Prerequisites, Remediation Steps, COH notes, non-prod schedule recommendations, Access Report, and an Account Map section
 
 ## Optional: enable Cost Optimization Hub
 

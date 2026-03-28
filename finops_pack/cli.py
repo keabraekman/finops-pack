@@ -18,6 +18,11 @@ from finops_pack.analyzers.schedule_recommendations import (
     build_schedule_recommendation_rows,
 )
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.aws.ce_recommendations import (
+    DEFAULT_SP_REQUEST,
+    collect_rightsizing_recommendations,
+    collect_savings_plans_purchase_recommendations,
+)
 from finops_pack.aws.cost_explorer import (
     RESOURCE_DAILY_WINDOW_DAYS,
     SPEND_BASELINE_WINDOW_DAYS,
@@ -49,6 +54,10 @@ from finops_pack.models import (
     RegionCoverage,
     SpendBaseline,
 )
+from finops_pack.prerequisites import (
+    CE_RESOURCE_LEVEL_DOC_NOTE,
+    CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
+)
 from finops_pack.render.dashboard import write_dashboard
 from finops_pack.render.exporters import CsvExporter, JsonExporter
 
@@ -64,6 +73,12 @@ ACCESS_DENIED_CODES = {
 RECENT_COMPLETED_DAY_OFFSET = 2
 RECENT_COMPLETED_DAY_END_OFFSET = 1
 RESOURCE_COST_14D_COLUMN = "Resource cost (14d)"
+CE_RIGHTSIZING_FALLBACK_MODULE_ID = "ce_rightsizing_fallback"
+CE_SAVINGS_PLAN_FALLBACK_MODULE_ID = "ce_savings_plan_fallback"
+
+
+def _ce_resource_level_doc_guidance() -> str:
+    return f"{CE_RESOURCE_LEVEL_DOC_NOTE} {CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE}"
 
 
 def _build_region_coverage(resolved_regions: list[str]) -> RegionCoverage:
@@ -275,7 +290,7 @@ def _check_resource_level_costs(session: Any) -> AccessCheck:
             enabled = False
             reason = (
                 "Resource-level daily cost data is not enabled or has not populated "
-                "for the last 14 days."
+                f"for the last 14 days. {CE_RESOURCE_LEVEL_DOC_NOTE}"
             )
         else:
             enabled = None
@@ -342,6 +357,58 @@ def _build_access_report(
     )
 
 
+def _append_optional_fallback_modules(
+    access_report: AccessReport,
+    *,
+    enable_ce_rightsizing_fallback: bool,
+    enable_ce_savings_plan_fallback: bool,
+) -> None:
+    """Append optional CE fallback modules to the access report when enabled."""
+    check_map = {check.check_id: check for check in access_report.checks}
+    cost_explorer_check = check_map.get("cost_explorer")
+
+    module_specs = [
+        (
+            enable_ce_rightsizing_fallback,
+            CE_RIGHTSIZING_FALLBACK_MODULE_ID,
+            "CE rightsizing fallback module",
+        ),
+        (
+            enable_ce_savings_plan_fallback,
+            CE_SAVINGS_PLAN_FALLBACK_MODULE_ID,
+            "CE Savings Plans fallback module",
+        ),
+    ]
+    for enabled, module_id, label in module_specs:
+        if not enabled:
+            continue
+
+        if cost_explorer_check is None:
+            status = "DEGRADED"
+            reason = "Cost Explorer prerequisite status was not available for this run."
+        elif cost_explorer_check.enabled is True:
+            status = "ACTIVE"
+            reason = (
+                "Optional fallback is enabled. Cost Explorer is queryable and can be used "
+                "if Cost Optimization Hub needs a secondary path."
+            )
+        else:
+            status = "DEGRADED"
+            reason = (
+                "Optional fallback is enabled but blocked because Cost Explorer is not ready. "
+                f"{cost_explorer_check.reason}"
+            )
+
+        access_report.modules.append(
+            ModuleStatus(
+                module_id=module_id,
+                label=label,
+                status=status,
+                reason=reason,
+            )
+        )
+
+
 def _format_enabled(enabled: bool | None) -> str:
     """Render tri-state booleans for console output."""
     if enabled is True:
@@ -404,6 +471,110 @@ def _print_ce_resource_daily_summary(
     resource_daily_error = resource_daily_snapshot.get("error")
     if isinstance(resource_daily_error, str) and resource_daily_error:
         print(f"ce_resource_daily_error={resource_daily_error}")
+
+
+def _collect_ce_rightsizing_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+    rate_limit_safe_mode: bool = False,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist optional CE rightsizing fallback recommendations."""
+    raw_dir = _raw_output_dir(output_dir)
+    rightsizing_path = raw_dir / "ce_rightsizing_recommendations.json"
+
+    try:
+        rightsizing_snapshot = collect_rightsizing_recommendations(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
+    except RuntimeError as exc:
+        rightsizing_snapshot = {
+            "operation": "GetRightsizingRecommendation",
+            "request": {
+                "Service": "AmazonEC2",
+                "Configuration": {
+                    "RecommendationTarget": "SAME_INSTANCE_FAMILY",
+                    "BenefitsConsidered": True,
+                },
+                "PageSize": 20,
+            },
+            "pages": [],
+            "items": [],
+            "recommendationCount": 0,
+            "error": str(exc),
+        }
+
+    _write_json_snapshot(rightsizing_path, rightsizing_snapshot)
+    return rightsizing_path, rightsizing_snapshot
+
+
+def _print_ce_rightsizing_summary(
+    rightsizing_path: Path,
+    rightsizing_snapshot: dict[str, Any],
+) -> None:
+    """Emit optional CE rightsizing fallback output details to stdout."""
+    print(f"ce_rightsizing_fallback_path={rightsizing_path}")
+    print(
+        "ce_rightsizing_fallback_recommendation_count="
+        f"{rightsizing_snapshot.get('recommendationCount', 0)}"
+    )
+    rightsizing_error = rightsizing_snapshot.get("error")
+    if isinstance(rightsizing_error, str) and rightsizing_error:
+        print(f"ce_rightsizing_fallback_error={rightsizing_error}")
+
+
+def _collect_ce_savings_plan_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    region_name: str = BILLING_CONTROL_PLANE_REGION,
+    rate_limit_safe_mode: bool = False,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist optional CE Savings Plans fallback recommendations."""
+    raw_dir = _raw_output_dir(output_dir)
+    savings_plan_path = raw_dir / "ce_savings_plan_recommendations.json"
+
+    try:
+        savings_plan_snapshot = collect_savings_plans_purchase_recommendations(
+            session,
+            region_name=region_name,
+            rate_limit_safe_mode=rate_limit_safe_mode,
+        )
+    except RuntimeError as exc:
+        savings_plan_snapshot = {
+            "operation": "GetSavingsPlansPurchaseRecommendation",
+            "startGenerationResponse": None,
+            "startGenerationError": None,
+            "request": DEFAULT_SP_REQUEST,
+            "pages": [],
+            "items": [],
+            "recommendationCount": 0,
+            "detailCount": 0,
+            "details": [],
+            "error": str(exc),
+        }
+
+    _write_json_snapshot(savings_plan_path, savings_plan_snapshot)
+    return savings_plan_path, savings_plan_snapshot
+
+
+def _print_ce_savings_plan_summary(
+    savings_plan_path: Path,
+    savings_plan_snapshot: dict[str, Any],
+) -> None:
+    """Emit optional CE Savings Plans fallback output details to stdout."""
+    print(f"ce_savings_plan_fallback_path={savings_plan_path}")
+    print(
+        "ce_savings_plan_fallback_recommendation_count="
+        f"{savings_plan_snapshot.get('recommendationCount', 0)}"
+    )
+    print(f"ce_savings_plan_fallback_detail_count={savings_plan_snapshot.get('detailCount', 0)}")
+    savings_plan_error = savings_plan_snapshot.get("error")
+    if isinstance(savings_plan_error, str) and savings_plan_error:
+        print(f"ce_savings_plan_fallback_error={savings_plan_error}")
 
 
 def _load_account_records_best_effort(
@@ -883,6 +1054,8 @@ def _build_summary_payload(
     access_report: AccessReport,
     ec2_inventory_snapshot: dict[str, Any] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
+    ce_rightsizing_snapshot: dict[str, Any] | None = None,
+    ce_savings_plan_snapshot: dict[str, Any] | None = None,
     spend_baseline: SpendBaseline | None = None,
     resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
@@ -950,6 +1123,23 @@ def _build_summary_payload(
             "estimated_count": schedule_estimated_count,
             "needs_ce_resource_level_opt_in_count": schedule_needs_opt_in_count,
         },
+        "fallbacks": {
+            "ce_rightsizing_recommendation_count": (
+                0
+                if ce_rightsizing_snapshot is None
+                else ce_rightsizing_snapshot.get("recommendationCount", 0)
+            ),
+            "ce_savings_plan_recommendation_count": (
+                0
+                if ce_savings_plan_snapshot is None
+                else ce_savings_plan_snapshot.get("recommendationCount", 0)
+            ),
+            "ce_savings_plan_detail_count": (
+                0
+                if ce_savings_plan_snapshot is None
+                else ce_savings_plan_snapshot.get("detailCount", 0)
+            ),
+        },
         "ce": {
             "spend_baseline_total": (
                 None if spend_baseline is None else spend_baseline.total_amount
@@ -1011,6 +1201,8 @@ def _write_summary_output(
     access_report: AccessReport,
     ec2_inventory_snapshot: dict[str, Any] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
+    ce_rightsizing_snapshot: dict[str, Any] | None = None,
+    ce_savings_plan_snapshot: dict[str, Any] | None = None,
     spend_baseline: SpendBaseline | None = None,
     resource_daily_snapshot: dict[str, Any] | None = None,
     summaries_snapshot: dict[str, Any] | None = None,
@@ -1028,6 +1220,8 @@ def _write_summary_output(
         access_report=access_report,
         ec2_inventory_snapshot=ec2_inventory_snapshot,
         schedule_recommendations=schedule_recommendations,
+        ce_rightsizing_snapshot=ce_rightsizing_snapshot,
+        ce_savings_plan_snapshot=ce_savings_plan_snapshot,
         spend_baseline=spend_baseline,
         resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=summaries_snapshot,
@@ -1098,6 +1292,22 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Collect optional Cost Explorer resource-level daily EC2 spend for the last 14 "
             "completed days and store it under out/raw/ce_resource_daily.json."
+        ),
+    )
+    run_parser.add_argument(
+        "--enable-ce-rightsizing-fallback",
+        action="store_true",
+        help=(
+            "Collect optional Cost Explorer GetRightsizingRecommendation snapshots as a "
+            "disabled-by-default fallback path. Cost Optimization Hub remains primary."
+        ),
+    )
+    run_parser.add_argument(
+        "--enable-ce-savings-plan-fallback",
+        action="store_true",
+        help=(
+            "Collect optional Cost Explorer Savings Plans purchase recommendation snapshots "
+            "as a disabled-by-default fallback path. Cost Optimization Hub remains primary."
         ),
     )
 
@@ -1185,6 +1395,8 @@ def handle_run(args: argparse.Namespace) -> int:
         enable_coh=args.enable_coh,
         rate_limit_safe_mode=args.rate_limit_safe_mode,
         collect_ce_resource_daily=args.collect_ce_resource_daily,
+        enable_ce_rightsizing_fallback=args.enable_ce_rightsizing_fallback,
+        enable_ce_savings_plan_fallback=args.enable_ce_savings_plan_fallback,
         output_dir=args.output_dir,
     )
     if resolved.role_arn is None:
@@ -1205,6 +1417,8 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"session_name={resolved.session_name}")
     print(f"enable_coh={resolved.enable_coh}")
     print(f"collect_ce_resource_daily={resolved.collect_ce_resource_daily}")
+    print(f"enable_ce_rightsizing_fallback={resolved.enable_ce_rightsizing_fallback}")
+    print(f"enable_ce_savings_plan_fallback={resolved.enable_ce_savings_plan_fallback}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
     _print_region_coverage(region_coverage)
     _print_schedule_config(resolved.schedule)
@@ -1227,6 +1441,11 @@ def handle_run(args: argparse.Namespace) -> int:
         session,
         region_coverage=region_coverage,
         caller_identity=caller_identity,
+    )
+    _append_optional_fallback_modules(
+        access_report,
+        enable_ce_rightsizing_fallback=resolved.enable_ce_rightsizing_fallback,
+        enable_ce_savings_plan_fallback=resolved.enable_ce_savings_plan_fallback,
     )
     output_dir = Path(resolved.output_dir)
     (
@@ -1275,6 +1494,24 @@ def handle_run(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         resource_daily_snapshot=resource_daily_snapshot,
     )
+    ce_rightsizing_path: Path | None = None
+    ce_rightsizing_snapshot: dict[str, Any] | None = None
+    if resolved.enable_ce_rightsizing_fallback:
+        ce_rightsizing_path, ce_rightsizing_snapshot = _collect_ce_rightsizing_snapshot(
+            session,
+            output_dir=output_dir,
+            region_name=BILLING_CONTROL_PLANE_REGION,
+            rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+        )
+    ce_savings_plan_path: Path | None = None
+    ce_savings_plan_snapshot: dict[str, Any] | None = None
+    if resolved.enable_ce_savings_plan_fallback:
+        ce_savings_plan_path, ce_savings_plan_snapshot = _collect_ce_savings_plan_snapshot(
+            session,
+            output_dir=output_dir,
+            region_name=BILLING_CONTROL_PLANE_REGION,
+            rate_limit_safe_mode=resolved.rate_limit_safe_mode,
+        )
     _merge_coh_collection_status(
         access_report,
         summaries_snapshot=coh_summaries_snapshot,
@@ -1296,6 +1533,22 @@ def handle_run(args: argparse.Namespace) -> int:
                 module_id="resource_level_costs",
                 reasons=[resource_daily_error],
             )
+    if ce_rightsizing_snapshot is not None:
+        rightsizing_error = ce_rightsizing_snapshot.get("error")
+        if isinstance(rightsizing_error, str) and rightsizing_error:
+            _merge_module_collection_status(
+                access_report,
+                module_id=CE_RIGHTSIZING_FALLBACK_MODULE_ID,
+                reasons=[rightsizing_error],
+            )
+    if ce_savings_plan_snapshot is not None:
+        savings_plan_error = ce_savings_plan_snapshot.get("error")
+        if isinstance(savings_plan_error, str) and savings_plan_error:
+            _merge_module_collection_status(
+                access_report,
+                module_id=CE_SAVINGS_PLAN_FALLBACK_MODULE_ID,
+                reasons=[savings_plan_error],
+            )
     _print_access_report(access_report)
     _print_ce_spend_summary(
         spend_baseline_path,
@@ -1316,6 +1569,10 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_detail_errors,
     )
     _print_coh_export_summary(coh_csv_export_path, coh_json_export_path)
+    if ce_rightsizing_path is not None and ce_rightsizing_snapshot is not None:
+        _print_ce_rightsizing_summary(ce_rightsizing_path, ce_rightsizing_snapshot)
+    if ce_savings_plan_path is not None and ce_savings_plan_snapshot is not None:
+        _print_ce_savings_plan_summary(ce_savings_plan_path, ce_savings_plan_snapshot)
 
     account_records, account_collection_error = _load_account_records_best_effort(
         session,
@@ -1374,6 +1631,8 @@ def handle_run(args: argparse.Namespace) -> int:
         access_report=access_report,
         ec2_inventory_snapshot=ec2_inventory_snapshot,
         schedule_recommendations=schedule_recommendations,
+        ce_rightsizing_snapshot=ce_rightsizing_snapshot,
+        ce_savings_plan_snapshot=ce_savings_plan_snapshot,
         spend_baseline=spend_baseline,
         resource_daily_snapshot=resource_daily_snapshot,
         summaries_snapshot=coh_summaries_snapshot,
