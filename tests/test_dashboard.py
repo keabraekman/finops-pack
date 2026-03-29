@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from finops_pack.models import (
     AccessCheck,
     AccessReport,
@@ -13,7 +15,7 @@ from finops_pack.prerequisites import (
     CE_RESOURCE_LEVEL_DOC_NOTE,
     CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
-from finops_pack.render.dashboard import render_dashboard_html
+from finops_pack.render.dashboard import build_dashboard_download_links, render_dashboard_html
 
 
 def _build_recommendation(
@@ -147,6 +149,7 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "Spend Baseline" in html
     assert "Average Daily Spend" in html
     assert "$201.45" in html
+    assert "Savings by Lever" in html
     assert "Top Opportunities" in html
     assert "Savings by Category" in html
     assert "Savings by Account" in html
@@ -159,7 +162,7 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "prod-core" in html
     assert "sandbox-apps" in html
     assert "Needs Review" in html
-    assert "Schedule Recommendations" in html
+    assert "Non-Prod Schedule Table" in html
     assert "Schedule-Only Low Savings" in html
     assert "Schedule-Only Likely Savings" in html
     assert "Schedule-Only High Savings" in html
@@ -270,3 +273,30 @@ def test_render_dashboard_html_includes_prerequisites_and_remediation_steps() ->
     assert CE_RESOURCE_LEVEL_DOC_NOTE in html
     assert CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE in html
     assert "Optional fallback modules" in html
+
+
+def test_render_dashboard_html_includes_download_links() -> None:
+    html = render_dashboard_html(
+        [AccountMapEntry(account_id="111111111111", name="prod-core", environment="prod")],
+        download_links=build_dashboard_download_links(
+            Path("/tmp/out/index.html"),
+            [
+                (
+                    "Accounts JSON",
+                    "Normalized account inventory with environment classification metadata.",
+                    Path("/tmp/out/downloads/accounts.json"),
+                ),
+                (
+                    "Summary JSON",
+                    "Diff-friendly totals for the current run.",
+                    Path("/tmp/out/summary.json"),
+                ),
+            ],
+        ),
+    )
+
+    assert "Download Files" in html
+    assert "Accounts JSON" in html
+    assert "Summary JSON" in html
+    assert 'href="downloads/accounts.json"' in html
+    assert 'href="summary.json"' in html

@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test check run
+.PHONY: lint format typecheck test check run preview
 
 lint:
 	uv run ruff check .
@@ -16,3 +16,6 @@ check: lint typecheck test
 
 run:
 	uv run python -m finops_pack.cli demo
+
+preview:
+	cd out && python -m http.server

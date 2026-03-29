@@ -47,6 +47,8 @@ def test_demo_command_runs(tmp_path: Path) -> None:
     assert (output_dir / "access_report.json").exists()
     assert (output_dir / "dashboard.html").exists()
     assert (tmp_path / "out" / "summary.json").exists()
+    assert (tmp_path / "out" / "index.html").exists()
+    assert (tmp_path / "out" / "downloads" / "accounts.json").exists()
 
 
 def test_run_requires_role_arn() -> None:
@@ -626,6 +628,21 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Recommendation IDs can expire after about 24 hours" in dashboard_html
     assert "prod-core" in dashboard_html
     assert "Rightsizing / Idle Deletion" in dashboard_html
+    assert "Savings by Lever" in dashboard_html
+    assert "Download Files" in dashboard_html
+
+    preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
+    assert "Download Files" in preview_html
+    assert 'href="downloads/accounts.json"' in preview_html
+    assert 'href="downloads/access_report.json"' in preview_html
+    assert 'href="downloads/exports.csv"' in preview_html
+    assert 'href="downloads/exports.json"' in preview_html
+    assert 'href="summary.json"' in preview_html
+    assert 'href="schedule/schedule_recs.csv"' in preview_html
+    assert (tmp_path / "out" / "downloads" / "accounts.json").exists()
+    assert (tmp_path / "out" / "downloads" / "access_report.json").exists()
+    assert (tmp_path / "out" / "downloads" / "exports.csv").exists()
+    assert (tmp_path / "out" / "downloads" / "exports.json").exists()
 
 
 def test_merge_coh_collection_status_marks_module_degraded_when_collection_fails() -> None:

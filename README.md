@@ -154,6 +154,8 @@ Successful runs now write:
 - `output/exports.csv`: flattened COH recommendation export (resourceId, accountId, type, action, estSavings, region, and `Resource cost (14d)` when resource-level CE data is available)
 - `output/exports.json`: COH recommendation export with full recommended configuration fields
 - `out/summary.json`: diff-friendly totals for accounts, access readiness, and COH collection results
+- `out/index.html`: preview-friendly dashboard landing page with embedded tables and download links
+- `out/downloads/*.json|csv`: copied JSON/CSV artifacts linked from the preview dashboard
 - `out/raw/ce_total_spend.json`: raw `GetCostAndUsage` response for the last 30 completed days of spend, grouped by month
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items
@@ -163,7 +165,18 @@ Successful runs now write:
 - `out/raw/ec2_inventory.json`: best-effort EC2 instance inventory across the configured region set and accessible accounts
 - `out/normalized/recommendations.json`: top COH recommendations normalized into the shared recommendation model
 - `out/schedule/schedule_recs.csv`: stoppable EC2 schedule candidates with off-hours savings estimates when resource-level CE daily data is available
-- `output/dashboard.html`: HTML dashboard with Spend Baseline, Prerequisites, Remediation Steps, COH notes, non-prod schedule recommendations, Access Report, and an Account Map section
+- `output/dashboard.html`: HTML dashboard with an executive summary, savings-by-lever table, top opportunities, non-prod schedule table, download links, and deeper appendix sections
+
+## Local preview
+
+Each run now writes a preview bundle rooted in `out/`, so you can serve the dashboard and its linked artifacts together:
+
+```bash
+cd out
+python -m http.server
+```
+
+Then open `http://localhost:8000/`. If you prefer Make, run `make preview`.
 
 ## Optional: enable Cost Optimization Hub
 

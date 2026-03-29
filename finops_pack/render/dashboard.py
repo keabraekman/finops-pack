@@ -6,6 +6,7 @@ import shutil
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from os.path import relpath
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,101 @@ def _build_executive_summary(
     if degraded_modules:
         summary += f" {len(degraded_modules)} billing module(s) are degraded."
     return summary
+
+
+def _resolve_coh_total_display(coh_context: dict[str, Any] | None) -> str | None:
+    """Choose a COH total savings display for executive summary cards."""
+    if coh_context is None:
+        return None
+
+    estimated_monthly_savings = coh_context.get("estimated_monthly_savings")
+    if isinstance(estimated_monthly_savings, (int, float)):
+        return _format_currency(
+            float(estimated_monthly_savings),
+            coh_context.get("currency_code"),
+        )
+
+    savings_by_category = coh_context.get("savings_by_category", [])
+    if not isinstance(savings_by_category, list):
+        return None
+
+    total = sum(
+        float(category["estimated_monthly_savings"])
+        for category in savings_by_category
+        if isinstance(category, dict)
+        and isinstance(category.get("estimated_monthly_savings"), (int, float))
+    )
+    if total <= 0:
+        return None
+
+    return _format_currency(total, coh_context.get("currency_code"))
+
+
+def _build_executive_summary_cards(
+    account_map: Sequence[AccountMapEntry],
+    *,
+    spend_baseline_context: dict[str, Any] | None,
+    coh_context: dict[str, Any] | None,
+    schedule_context: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    """Build top-level executive summary cards for the dashboard."""
+    grouped = _group_accounts(list(account_map))
+    cards = [
+        {
+            "label": "Accounts Classified",
+            "value": str(len(account_map)),
+            "meta": (
+                f"{len(grouped['prod'])} prod · {len(grouped['nonprod'])} non-prod · "
+                f"{len(grouped['unknown'])} review"
+            ),
+        }
+    ]
+
+    if spend_baseline_context is not None:
+        if (
+            spend_baseline_context.get("error")
+            and not spend_baseline_context.get("monthly_buckets")
+        ):
+            cards.append(
+                {
+                    "label": "Spend Baseline",
+                    "value": "Unavailable",
+                    "meta": str(spend_baseline_context["error"]),
+                }
+            )
+        else:
+            cards.append(
+                {
+                    "label": "Last 30d Spend",
+                    "value": str(spend_baseline_context["total_spend_display"]),
+                    "meta": str(spend_baseline_context["window_display"]),
+                }
+            )
+
+    coh_total_display = _resolve_coh_total_display(coh_context)
+    if coh_context is not None and coh_total_display is not None:
+        cards.append(
+            {
+                "label": "COH Savings",
+                "value": f"{coh_total_display} / month",
+                "meta": f"{coh_context['recommendation_count']} normalized recommendations",
+            }
+        )
+
+    if schedule_context is not None:
+        cards.append(
+            {
+                "label": "Schedule Savings",
+                "value": f"{schedule_context['total_likely_display']} / day",
+                "meta": (
+                    f"{schedule_context['recommendation_count']} non-prod candidates · "
+                    f"range {schedule_context['total_low_display']} to "
+                    f"{schedule_context['total_high_display']} / day"
+                ),
+            }
+        )
+
+    return cards
 
 
 def _format_period_display(start: str, end: str) -> str:
@@ -289,6 +385,9 @@ def _build_schedule_context(
         "recommendation_count": len(rows),
         "estimated_count": estimated_count,
         "needs_opt_in_count": needs_opt_in_count,
+        "total_low": total_low,
+        "total_likely": total_likely,
+        "total_high": total_high,
         "total_low_display": _format_currency(total_low, "USD"),
         "total_likely_display": _format_currency(total_likely, "USD"),
         "total_high_display": _format_currency(total_high, "USD"),
@@ -615,6 +714,70 @@ def _build_savings_by_environment(
     return aggregated_rows
 
 
+def _build_savings_by_lever_context(
+    coh_context: dict[str, Any] | None,
+    schedule_context: dict[str, Any] | None,
+) -> list[dict[str, str | int]] | None:
+    """Combine schedule and COH savings into a single dashboard table."""
+    rows: list[dict[str, str | int]] = []
+
+    if schedule_context is not None:
+        rows.append(
+            {
+                "lever": "Non-Prod EC2 Schedule",
+                "source": "Schedule",
+                "opportunity_count": schedule_context["recommendation_count"],
+                "savings_display": f"{schedule_context['total_likely_display']} / day",
+                "detail": (
+                    f"Range {schedule_context['total_low_display']} to "
+                    f"{schedule_context['total_high_display']} / day"
+                ),
+            }
+        )
+
+    if coh_context is not None:
+        for category in coh_context["savings_by_category"]:
+            rows.append(
+                {
+                    "lever": str(category["label"]),
+                    "source": "COH",
+                    "opportunity_count": int(category["opportunity_count"]),
+                    "savings_display": f"{category['monthly_savings_display']} / month",
+                    "detail": "AWS Cost Optimization Hub normalized monthly estimate",
+                }
+            )
+
+    return rows or None
+
+
+def build_dashboard_download_links(
+    dashboard_path: str | Path,
+    download_targets: Sequence[tuple[str, str, str | Path]],
+) -> list[dict[str, str]]:
+    """Build dashboard download links with paths relative to the dashboard location."""
+    dashboard_output = Path(dashboard_path)
+    links: list[dict[str, str]] = []
+
+    for label, description, target in download_targets:
+        target_path = Path(target)
+        links.append(
+            {
+                "label": label,
+                "description": description,
+                "filename": target_path.name,
+                "format": target_path.suffix.lstrip(".").upper() or "FILE",
+                "href": Path(
+                    relpath(
+                        target_path,
+                        start=dashboard_output.parent,
+                    )
+                ).as_posix(),
+            }
+        )
+
+    return links
+
+
 def render_dashboard_html(
     account_map: list[AccountMapEntry],
     *,
@@ -629,6 +792,7 @@ def render_dashboard_html(
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    download_links: Sequence[dict[str, str]] | None = None,
 ) -> str:
     """Render the dashboard HTML for account inventory."""
     environment = Environment(
@@ -638,6 +802,12 @@ def render_dashboard_html(
     template = environment.get_template("report.html.j2")
     grouped = _group_accounts(account_map)
     recommendation_list = list(recommendations or [])
+    spend_baseline_context = _build_spend_baseline_context(
+        spend_baseline,
+        spend_baseline_error,
+    )
+    coh_context = _build_coh_context(coh_summary, account_map, recommendation_list)
+    schedule_context = _build_schedule_context(schedule_recommendations, account_map)
     prerequisites_context = _build_prerequisites_context(access_report)
     remediation_context = _build_remediation_context(
         access_report,
@@ -651,10 +821,17 @@ def render_dashboard_html(
         account_id=account_id,
         region=region,
         executive_summary=_build_executive_summary(account_map, access_report),
-        spend_baseline_context=_build_spend_baseline_context(
-            spend_baseline,
-            spend_baseline_error,
+        executive_summary_cards=_build_executive_summary_cards(
+            account_map,
+            spend_baseline_context=spend_baseline_context,
+            coh_context=coh_context,
+            schedule_context=schedule_context,
         ),
+        savings_by_lever=_build_savings_by_lever_context(
+            coh_context,
+            schedule_context,
+        ),
+        spend_baseline_context=spend_baseline_context,
         account_map={
             "entries": account_map,
             "prod": grouped["prod"],
@@ -665,10 +842,11 @@ def render_dashboard_html(
         findings=[],
         recommendations=[],
         access_report=access_report,
-        coh_context=_build_coh_context(coh_summary, account_map, recommendation_list),
-        schedule_context=_build_schedule_context(schedule_recommendations, account_map),
+        coh_context=coh_context,
+        schedule_context=schedule_context,
         prerequisites_context=prerequisites_context,
         remediation_context=remediation_context,
+        download_links=list(download_links or []),
         show_findings_section=False,
         show_recommendations_section=False,
     )
@@ -686,6 +864,7 @@ def write_dashboard(
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    download_links: Sequence[dict[str, str]] | None = None,
 ) -> Path:
     """Write the account dashboard HTML and its stylesheet."""
     destination_path = Path(destination)
@@ -701,6 +880,7 @@ def write_dashboard(
             coh_summary=coh_summary,
             recommendations=recommendations,
             schedule_recommendations=schedule_recommendations,
+            download_links=download_links,
         ),
         encoding="utf-8",
     )

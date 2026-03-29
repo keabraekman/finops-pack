@@ -7,6 +7,7 @@ import json
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from shlex import quote
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -58,7 +59,12 @@ from finops_pack.prerequisites import (
     CE_RESOURCE_LEVEL_DOC_NOTE,
     CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
-from finops_pack.render.dashboard import write_dashboard
+from finops_pack.publish import publish_preview_site
+from finops_pack.render.dashboard import (
+    build_dashboard_download_links,
+    render_dashboard_html,
+    write_dashboard,
+)
 from finops_pack.render.exporters import CsvExporter, JsonExporter
 
 BILLING_CONTROL_PLANE_REGION = "us-east-1"
@@ -1354,6 +1360,7 @@ def _write_account_outputs(
     coh_summary: dict[str, Any] | None = None,
     recommendations: list[NormalizedRecommendation] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
+    download_links: list[dict[str, str]] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Write JSON and HTML artifacts for classified accounts."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1377,9 +1384,68 @@ def _write_account_outputs(
         coh_summary=coh_summary,
         recommendations=recommendations,
         schedule_recommendations=schedule_recommendations,
+        download_links=download_links,
     )
 
     return accounts_path, access_report_path, dashboard_path
+
+
+def _build_dashboard_download_targets(
+    *,
+    accounts_path: Path,
+    access_report_path: Path,
+    summary_path: Path,
+    coh_csv_export_path: Path | None = None,
+    coh_json_export_path: Path | None = None,
+    schedule_recs_path: Path | None = None,
+) -> list[tuple[str, str, Path]]:
+    """Build labeled dashboard download targets."""
+    targets = [
+        (
+            "Accounts JSON",
+            "Normalized account inventory with environment classification metadata.",
+            accounts_path,
+        ),
+        (
+            "Access Report JSON",
+            "Billing prerequisite checks, module readiness, and region coverage.",
+            access_report_path,
+        ),
+        (
+            "Summary JSON",
+            "Diff-friendly run totals for accounts, COH collection, and scheduling outputs.",
+            summary_path,
+        ),
+    ]
+
+    if coh_csv_export_path is not None:
+        targets.append(
+            (
+                "COH Export CSV",
+                "Flattened Cost Optimization Hub recommendations for spreadsheet workflows.",
+                coh_csv_export_path,
+            )
+        )
+
+    if coh_json_export_path is not None:
+        targets.append(
+            (
+                "COH Export JSON",
+                "Full normalized Cost Optimization Hub recommendation payloads.",
+                coh_json_export_path,
+            )
+        )
+
+    if schedule_recs_path is not None:
+        targets.append(
+            (
+                "Schedule CSV",
+                "Non-prod EC2 stop-schedule candidates with savings estimates.",
+                schedule_recs_path,
+            )
+        )
+
+    return targets
 
 
 def handle_run(args: argparse.Namespace) -> int:
@@ -1608,20 +1674,6 @@ def handle_run(args: argparse.Namespace) -> int:
         if account_collection_error is None
         else access_report.account_id or "Current account"
     )
-    accounts_path, access_report_path, dashboard_path = _write_account_outputs(
-        account_map,
-        output_dir=output_dir,
-        region=resolved.region,
-        account_id=account_output_label,
-        access_report=access_report,
-        spend_baseline=spend_baseline,
-        spend_baseline_error=(
-            spend_baseline_error if isinstance(spend_baseline_error, str) else None
-        ),
-        coh_summary=coh_summaries_snapshot,
-        recommendations=coh_normalized_recommendations,
-        schedule_recommendations=schedule_recommendations,
-    )
     summary_path = _write_summary_output(
         output_dir,
         region=resolved.region,
@@ -1640,11 +1692,77 @@ def handle_run(args: argparse.Namespace) -> int:
         normalized_recommendations=coh_normalized_recommendations,
         detail_errors=coh_detail_errors,
     )
+    output_dashboard_path = output_dir / "dashboard.html"
+    output_download_links = build_dashboard_download_links(
+        output_dashboard_path,
+        _build_dashboard_download_targets(
+            accounts_path=output_dir / "accounts.json",
+            access_report_path=output_dir / "access_report.json",
+            summary_path=summary_path,
+            coh_csv_export_path=coh_csv_export_path,
+            coh_json_export_path=coh_json_export_path,
+            schedule_recs_path=schedule_recs_path,
+        ),
+    )
+    accounts_path, access_report_path, dashboard_path = _write_account_outputs(
+        account_map,
+        output_dir=output_dir,
+        region=resolved.region,
+        account_id=account_output_label,
+        access_report=access_report,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=(
+            spend_baseline_error if isinstance(spend_baseline_error, str) else None
+        ),
+        coh_summary=coh_summaries_snapshot,
+        recommendations=coh_normalized_recommendations,
+        schedule_recommendations=schedule_recommendations,
+        download_links=output_download_links,
+    )
+    preview_dir = _artifact_output_dir(output_dir)
+    preview_download_links = build_dashboard_download_links(
+        preview_dir / "index.html",
+        _build_dashboard_download_targets(
+            accounts_path=preview_dir / "downloads" / "accounts.json",
+            access_report_path=preview_dir / "downloads" / "access_report.json",
+            summary_path=summary_path,
+            coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
+            coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
+            schedule_recs_path=schedule_recs_path,
+        ),
+    )
+    preview_html = render_dashboard_html(
+        account_map,
+        account_id=account_output_label,
+        region=resolved.region,
+        access_report=access_report,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=(
+            spend_baseline_error if isinstance(spend_baseline_error, str) else None
+        ),
+        coh_summary=coh_summaries_snapshot,
+        recommendations=coh_normalized_recommendations,
+        schedule_recommendations=schedule_recommendations,
+        download_links=preview_download_links,
+    )
+    preview_path = publish_preview_site(
+        preview_dir=preview_dir,
+        html=preview_html,
+        stylesheet_source=dashboard_path.parent / "style.css",
+        asset_copies=[
+            (accounts_path, preview_dir / "downloads" / accounts_path.name),
+            (access_report_path, preview_dir / "downloads" / access_report_path.name),
+            (coh_csv_export_path, preview_dir / "downloads" / coh_csv_export_path.name),
+            (coh_json_export_path, preview_dir / "downloads" / coh_json_export_path.name),
+        ],
+    )
     print(f"account_count={len(account_map)}")
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
     print(f"summary_path={summary_path}")
+    print(f"preview_path={preview_path}")
+    print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
 
     return 0
 
@@ -1665,13 +1783,6 @@ def handle_demo(args: argparse.Namespace) -> int:
         prod_account_ids=file_config.prod_account_ids,
         nonprod_account_ids=file_config.nonprod_account_ids,
     )
-    accounts_path, access_report_path, dashboard_path = _write_account_outputs(
-        account_map,
-        output_dir=output_dir,
-        region=file_config.region,
-        account_id="Demo Fixture",
-        access_report=access_report,
-    )
     summary_path = _write_summary_output(
         output_dir,
         region=file_config.region,
@@ -1679,6 +1790,48 @@ def handle_demo(args: argparse.Namespace) -> int:
         rate_limit_safe_mode=file_config.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
+    )
+    output_dashboard_path = output_dir / "dashboard.html"
+    output_download_links = build_dashboard_download_links(
+        output_dashboard_path,
+        _build_dashboard_download_targets(
+            accounts_path=output_dir / "accounts.json",
+            access_report_path=output_dir / "access_report.json",
+            summary_path=summary_path,
+        ),
+    )
+    accounts_path, access_report_path, dashboard_path = _write_account_outputs(
+        account_map,
+        output_dir=output_dir,
+        region=file_config.region,
+        account_id="Demo Fixture",
+        access_report=access_report,
+        download_links=output_download_links,
+    )
+    preview_dir = _artifact_output_dir(output_dir)
+    preview_download_links = build_dashboard_download_links(
+        preview_dir / "index.html",
+        _build_dashboard_download_targets(
+            accounts_path=preview_dir / "downloads" / "accounts.json",
+            access_report_path=preview_dir / "downloads" / "access_report.json",
+            summary_path=summary_path,
+        ),
+    )
+    preview_html = render_dashboard_html(
+        account_map,
+        account_id="Demo Fixture",
+        region=file_config.region,
+        access_report=access_report,
+        download_links=preview_download_links,
+    )
+    preview_path = publish_preview_site(
+        preview_dir=preview_dir,
+        html=preview_html,
+        stylesheet_source=dashboard_path.parent / "style.css",
+        asset_copies=[
+            (accounts_path, preview_dir / "downloads" / accounts_path.name),
+            (access_report_path, preview_dir / "downloads" / access_report_path.name),
+        ],
     )
 
     print("Running finops-pack in demo mode")
@@ -1690,6 +1843,8 @@ def handle_demo(args: argparse.Namespace) -> int:
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
     print(f"summary_path={summary_path}")
+    print(f"preview_path={preview_path}")
+    print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
 
     return 0
 
