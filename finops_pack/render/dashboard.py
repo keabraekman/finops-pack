@@ -123,9 +123,8 @@ def _build_executive_summary_cards(
     ]
 
     if spend_baseline_context is not None:
-        if (
-            spend_baseline_context.get("error")
-            and not spend_baseline_context.get("monthly_buckets")
+        if spend_baseline_context.get("error") and not spend_baseline_context.get(
+            "monthly_buckets"
         ):
             cards.append(
                 {
@@ -357,9 +356,7 @@ def _build_schedule_context(
                     _format_currency(low_savings, "USD") if low_savings is not None else "TBD"
                 ),
                 "likely_display": (
-                    _format_currency(likely_savings, "USD")
-                    if likely_savings is not None
-                    else "TBD"
+                    _format_currency(likely_savings, "USD") if likely_savings is not None else "TBD"
                 ),
                 "high_display": (
                     _format_currency(high_savings, "USD") if high_savings is not None else "TBD"
@@ -498,8 +495,7 @@ def _build_remediation_context(
                 f"{CE_RESOURCE_LEVEL_DOC_NOTE} {CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE}",
             )
         elif (
-            resource_level_check.enabled is None
-            and "denied" in resource_level_check.reason.lower()
+            resource_level_check.enabled is None and "denied" in resource_level_check.reason.lower()
         ):
             add_step(
                 "Grant resource-level Cost Explorer permissions",
@@ -783,6 +779,7 @@ def render_dashboard_html(
     *,
     title: str = "FinOps Pack Dashboard",
     subtitle: str = "AWS Organizations account inventory and environment classification.",
+    stylesheet_path: str | None = None,
     generated_at: str | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
@@ -817,6 +814,7 @@ def render_dashboard_html(
     return template.render(
         title=title,
         subtitle=subtitle,
+        stylesheet_path=stylesheet_path,
         generated_at=generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
         account_id=account_id,
         region=region,
@@ -856,6 +854,7 @@ def write_dashboard(
     account_map: list[AccountMapEntry],
     destination: str | Path,
     *,
+    stylesheet_path: str | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
@@ -872,6 +871,7 @@ def write_dashboard(
     destination_path.write_text(
         render_dashboard_html(
             account_map,
+            stylesheet_path=stylesheet_path,
             account_id=account_id,
             region=region,
             access_report=access_report,

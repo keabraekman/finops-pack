@@ -74,6 +74,9 @@ class AppConfig:
     rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
+    report_bucket: str | None = None
+    report_client_id: str | None = None
+    report_retention_days: int = 7
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     prod_account_ids: list[str] = field(default_factory=list)
     nonprod_account_ids: list[str] = field(default_factory=list)
@@ -107,6 +110,39 @@ def _normalize_region_list(value: Any) -> list[str]:
         normalized.append(region)
 
     return normalized
+
+
+def _normalize_optional_string(value: Any, *, key: str) -> str | None:
+    """Normalize optional non-empty string config values."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string.")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{key} must not be empty when set.")
+    return normalized
+
+
+def _normalize_report_bucket(value: Any) -> str | None:
+    """Normalize an optional S3 bucket name."""
+    normalized = _normalize_optional_string(value, key="report_bucket")
+    if normalized is None:
+        return None
+
+    bucket = normalized.removeprefix("s3://").strip("/")
+    if not bucket or "/" in bucket:
+        raise ValueError("report_bucket must be an S3 bucket name, not an S3 URI path.")
+    return bucket
+
+
+def _normalize_positive_int(value: Any, *, key: str) -> int:
+    """Normalize config values that must be positive integers."""
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{key} must be an integer.")
+    if value < 1:
+        raise ValueError(f"{key} must be greater than 0.")
+    return value
 
 
 def _normalize_business_hours(value: Any) -> BusinessHours:
@@ -194,6 +230,12 @@ def _validate_config(config: AppConfig) -> AppConfig:
         raise ValueError("region must be included in regions when regions is set.")
     if not config.output_dir:
         raise ValueError("output_dir must not be empty.")
+    if bool(config.report_bucket) != bool(config.report_client_id):
+        raise ValueError("report_bucket and report_client_id must be set together.")
+    if config.report_client_id is not None and "/" in config.report_client_id:
+        raise ValueError("report_client_id must not contain '/'.")
+    if config.report_retention_days < 1:
+        raise ValueError("report_retention_days must be greater than 0.")
     return config
 
 
@@ -213,6 +255,9 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
+        "report_bucket",
+        "report_client_id",
+        "report_retention_days",
         "schedule",
         "prod_account_ids",
         "nonprod_account_ids",
@@ -231,6 +276,15 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         key="nonprod_account_ids",
     )
     normalized["regions"] = _normalize_region_list(normalized.get("regions"))
+    normalized["report_bucket"] = _normalize_report_bucket(normalized.get("report_bucket"))
+    normalized["report_client_id"] = _normalize_optional_string(
+        normalized.get("report_client_id"),
+        key="report_client_id",
+    )
+    normalized["report_retention_days"] = _normalize_positive_int(
+        normalized.get("report_retention_days", 7),
+        key="report_retention_days",
+    )
     normalized["schedule"] = _normalize_schedule(normalized.get("schedule"))
     return normalized
 
@@ -282,6 +336,9 @@ def merge_run_config(
     enable_ce_rightsizing_fallback: bool,
     enable_ce_savings_plan_fallback: bool,
     output_dir: str | None,
+    report_bucket: str | None,
+    report_client_id: str | None,
+    report_retention_days: int | None,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
     merged_region = region if region is not None else file_config.region
@@ -310,6 +367,24 @@ def merge_run_config(
             rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,
             demo_fixture_dir=file_config.demo_fixture_dir,
+            report_bucket=(
+                _normalize_report_bucket(report_bucket)
+                if report_bucket is not None
+                else file_config.report_bucket
+            ),
+            report_client_id=(
+                _normalize_optional_string(report_client_id, key="report_client_id")
+                if report_client_id is not None
+                else file_config.report_client_id
+            ),
+            report_retention_days=(
+                _normalize_positive_int(
+                    report_retention_days,
+                    key="report_retention_days",
+                )
+                if report_retention_days is not None
+                else file_config.report_retention_days
+            ),
             schedule=file_config.schedule,
             prod_account_ids=file_config.prod_account_ids,
             nonprod_account_ids=file_config.nonprod_account_ids,

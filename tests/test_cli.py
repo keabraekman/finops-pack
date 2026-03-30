@@ -428,6 +428,7 @@ def test_handle_run_enables_cost_optimization_hub(
             [],
         )
     )
+    publish_report_site_to_s3 = Mock(return_value=Mock(report_url="https://example.com/report"))
 
     monkeypatch.setattr(cli, "assume_role_session", assume_role_session)
     monkeypatch.setattr(cli, "enable_cost_optimization_hub", enable_coh)
@@ -448,6 +449,7 @@ def test_handle_run_enables_cost_optimization_hub(
         collect_top_recommendation_details,
     )
     monkeypatch.setattr(cli, "list_accounts", list_accounts)
+    monkeypatch.setattr(cli, "publish_report_site_to_s3", publish_report_site_to_s3)
 
     args = argparse.Namespace(
         command="run",
@@ -463,6 +465,9 @@ def test_handle_run_enables_cost_optimization_hub(
         rate_limit_safe_mode=True,
         config=str(config_file),
         output_dir=str(tmp_path / "output"),
+        report_bucket="s3://report-bucket",
+        report_client_id="acme-prod",
+        report_retention_days=14,
     )
 
     result = cli.handle_run(args)
@@ -517,6 +522,19 @@ def test_handle_run_enables_cost_optimization_hub(
         region_name="us-east-1",
         rate_limit_safe_mode=True,
     )
+    publish_report_site_to_s3.assert_called_once()
+    publish_call = publish_report_site_to_s3.call_args.kwargs
+    assert publish_call["session"] is session
+    assert publish_call["bucket"] == "report-bucket"
+    assert publish_call["client_id"] == "acme-prod"
+    assert publish_call["retention_days"] == 14
+    assert publish_call["preview_dir"] == (tmp_path / "out")
+    assert callable(publish_call["build_index_html"])
+    uploaded_asset_names = {asset.object_name for asset in publish_call["assets"]}
+    assert "style.css" in uploaded_asset_names
+    assert "downloads/exports.csv" in uploaded_asset_names
+    assert "downloads/exports.json" in uploaded_asset_names
+    assert "summary.json" in uploaded_asset_names
     build_schedule_recommendation_rows.assert_called_once_with(
         collect_ec2_inventory.return_value,
         schedule=cli.load_config(str(config_file)).schedule,
@@ -529,6 +547,9 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "enable_ce_rightsizing_fallback=False" in output
     assert "enable_ce_savings_plan_fallback=False" in output
     assert "rate_limit_safe_mode=True" in output
+    assert "report_bucket=report-bucket" in output
+    assert "report_client_id=acme-prod" in output
+    assert "report_retention_days=14" in output
     assert "region_coverage=us-west-2,us-east-1" in output
     assert "schedule_timezone=America/New_York" in output
     assert "schedule_business_hours=mon,tue,wed,thu,fri@08:00-18:00" in output
@@ -543,6 +564,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "schedule_recommendation_count=1" in output
     assert "schedule_estimated_count=1" in output
     assert "schedule_recs_path=" in output
+    assert "Report URL: https://example.com/report" in output
     assert "resource_level_enabled=no" in output
     assert "module_resource_level_costs=DEGRADED" in output
     assert "account_count=1" in output
@@ -605,9 +627,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert (
         "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1,2026-03-10=$4.20"
     ) in exports_csv
-    schedule_csv = (tmp_path / "out" / "schedule" / "schedule_recs.csv").read_text(
-        encoding="utf-8"
-    )
+    schedule_csv = (tmp_path / "out" / "schedule" / "schedule_recs.csv").read_text(encoding="utf-8")
     assert (
         "estimatedOffHoursDailySavingsLow,estimatedOffHoursDailySavings,"
         "estimatedOffHoursDailySavingsHigh" in schedule_csv

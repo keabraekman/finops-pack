@@ -24,6 +24,9 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.report_bucket is None
+    assert cfg.report_client_id is None
+    assert cfg.report_retention_days == 7
     assert cfg.schedule.timezone == "UTC"
     assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu", "fri"]
     assert cfg.schedule.business_hours.start_hour == 9
@@ -52,6 +55,9 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
+                "report_bucket: s3://finops-pack-reports",
+                "report_client_id: acme-prod",
+                "report_retention_days: 14",
                 "schedule:",
                 "  timezone: America/Los_Angeles",
                 "  business_hours:",
@@ -86,6 +92,9 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.report_bucket == "finops-pack-reports"
+    assert cfg.report_client_id == "acme-prod"
+    assert cfg.report_retention_days == 14
     assert cfg.schedule.timezone == "America/Los_Angeles"
     assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu"]
     assert cfg.schedule.business_hours.start_hour == 8
@@ -109,6 +118,9 @@ def test_merge_run_config_prefers_cli_values() -> None:
         rate_limit_safe_mode=False,
         output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
+        report_bucket="from-file-bucket",
+        report_client_id="from-file-client",
+        report_retention_days=7,
         prod_account_ids=["111111111111"],
         nonprod_account_ids=["222222222222"],
     )
@@ -126,6 +138,9 @@ def test_merge_run_config_prefers_cli_values() -> None:
         enable_ce_savings_plan_fallback=True,
         rate_limit_safe_mode=True,
         output_dir="from-cli-output",
+        report_bucket="s3://from-cli-bucket",
+        report_client_id="from-cli-client",
+        report_retention_days=14,
     )
 
     assert merged.role_arn == "arn:from:cli"
@@ -140,6 +155,9 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.enable_ce_savings_plan_fallback is True
     assert merged.rate_limit_safe_mode is True
     assert merged.output_dir == "from-cli-output"
+    assert merged.report_bucket == "from-cli-bucket"
+    assert merged.report_client_id == "from-cli-client"
+    assert merged.report_retention_days == 14
     assert merged.prod_account_ids == ["111111111111"]
     assert merged.nonprod_account_ids == ["222222222222"]
 
@@ -161,7 +179,42 @@ def test_merge_run_config_requires_role_arn() -> None:
             enable_ce_savings_plan_fallback=False,
             rate_limit_safe_mode=False,
             output_dir=None,
+            report_bucket=None,
+            report_client_id=None,
+            report_retention_days=None,
         )
+
+
+def test_load_config_requires_report_bucket_and_client_id_together(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "report_bucket: finops-pack-reports",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="report_bucket and report_client_id"):
+        load_config(str(config_file))
+
+
+def test_load_config_rejects_non_positive_report_retention_days(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "report_bucket: finops-pack-reports",
+                "report_client_id: acme-prod",
+                "report_retention_days: 0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="report_retention_days"):
+        load_config(str(config_file))
 
 
 def test_load_config_rejects_overlapping_account_override_lists(tmp_path: Path) -> None:

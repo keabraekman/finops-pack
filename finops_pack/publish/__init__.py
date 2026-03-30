@@ -6,6 +6,8 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
+from finops_pack.publish.s3 import PublishAsset, PublishedReport, publish_report_site_to_s3
+
 
 def publish_preview_site(
     *,
@@ -37,3 +39,11 @@ def publish_preview_site(
         shutil.copyfile(source_path, destination_path)
 
     return index_path
+
+
+__all__ = [
+    "PublishAsset",
+    "PublishedReport",
+    "publish_preview_site",
+    "publish_report_site_to_s3",
+]

@@ -110,6 +110,7 @@ Based on the commands currently implemented in this repo, the narrowest target-r
   - `iam:CreateServiceLinkedRole` for `cost-optimization-hub.bcm.amazonaws.com`
   - `iam:PutRolePolicy` on `AWSServiceRoleForCostOptimizationHub`
 - Baseline read access now also includes `cost-optimization-hub:ListEnrollmentStatuses`, `cost-optimization-hub:ListRecommendationSummaries`, and `cost-optimization-hub:ListRecommendations` so finops-pack can report COH readiness and snapshot raw COH data.
+- If you enable report publishing, also add `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on the dedicated report prefix plus `s3:ListBucket` on the report bucket.
 
 The checked-in CloudFormation template and starter IAM JSON files are still broader because they are scaffolding for future collectors and billing reads.
 
@@ -124,6 +125,8 @@ You can pass settings on the CLI or in `config.yaml`. See `config.example.yaml` 
 If Cost Explorer resource-level daily data is not enabled, the prerequisites detector marks the schedule estimator as blocked instead of guessing. The exact report note is: `Cost Explorer resource-level daily data is opt-in and only covers the last 14 days.`
 
 `schedule` is an optional config block for business-hours-aware workflows. It defaults to `timezone: UTC` and `Mon-Fri, 9-5`, and you can override both the timezone and business-hours window in `config.yaml`.
+
+`report_bucket` and `report_client_id` optionally enable S3 publishing. When both are set, finops-pack uploads a zipped preview bundle plus report artifacts under `s3://<bucket>/<client-id>/<run-id>/`, deletes older client prefixes after `report_retention_days` (default `7`), and prints a single presigned `Report URL` for the uploaded `index.html`.
 
 Best-effort EC2 inventory now walks the configured `regions` across AWS Organizations accounts and derives each member-account target role by swapping the account ID in the provided `--role-arn`. Accounts or regions that fail are skipped and recorded in `out/raw/ec2_inventory.json`.
 
@@ -156,6 +159,7 @@ Successful runs now write:
 - `out/summary.json`: diff-friendly totals for accounts, access readiness, and COH collection results
 - `out/index.html`: preview-friendly dashboard landing page with embedded tables and download links
 - `out/downloads/*.json|csv`: copied JSON/CSV artifacts linked from the preview dashboard
+- optional S3 publish: a zipped preview bundle plus presigned `index.html`, `exports.csv`, and `exports.json` URLs under `s3://<report_bucket>/<report_client_id>/<run-id>/`
 - `out/raw/ce_total_spend.json`: raw `GetCostAndUsage` response for the last 30 completed days of spend, grouped by month
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items

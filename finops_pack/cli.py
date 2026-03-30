@@ -59,7 +59,7 @@ from finops_pack.prerequisites import (
     CE_RESOURCE_LEVEL_DOC_NOTE,
     CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
-from finops_pack.publish import publish_preview_site
+from finops_pack.publish import PublishAsset, publish_preview_site, publish_report_site_to_s3
 from finops_pack.render.dashboard import (
     build_dashboard_download_links,
     render_dashboard_html,
@@ -1081,9 +1081,7 @@ def _build_summary_payload(
         2,
     )
     schedule_estimated_count = sum(
-        1
-        for row in schedule_recommendation_list
-        if row.get("estimationStatus") == ESTIMATED_STATUS
+        1 for row in schedule_recommendation_list if row.get("estimationStatus") == ESTIMATED_STATUS
     )
     schedule_needs_opt_in_count = sum(
         1
@@ -1119,9 +1117,7 @@ def _build_summary_payload(
                 0 if ec2_inventory_snapshot is None else ec2_inventory_snapshot.get("itemCount", 0)
             ),
             "ec2_inventory_error_count": (
-                0
-                if ec2_inventory_snapshot is None
-                else ec2_inventory_snapshot.get("errorCount", 0)
+                0 if ec2_inventory_snapshot is None else ec2_inventory_snapshot.get("errorCount", 0)
             ),
         },
         "schedule_recommendations": {
@@ -1279,6 +1275,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--output-dir",
         help="Directory where generated reports and JSON artifacts are written.",
+    )
+    run_parser.add_argument(
+        "--report-bucket",
+        help="Optional S3 bucket where report artifacts are published.",
+    )
+    run_parser.add_argument(
+        "--report-client-id",
+        help="Client identifier used in the S3 report prefix: client-id/run-id/.",
+    )
+    run_parser.add_argument(
+        "--report-retention-days",
+        type=int,
+        help="Days to retain older report prefixes in S3 before deletion (default: 7).",
     )
     run_parser.add_argument(
         "--rate-limit-safe-mode",
@@ -1448,6 +1457,33 @@ def _build_dashboard_download_targets(
     return targets
 
 
+def _build_s3_publish_assets(
+    *,
+    preview_dir: Path,
+    preview_download_targets: list[tuple[str, str, Path]],
+) -> list[PublishAsset]:
+    """Build the S3 upload manifest from the local preview site."""
+    assets = [
+        PublishAsset(
+            source_path=preview_dir / "style.css",
+            object_name="style.css",
+        )
+    ]
+
+    for label, description, target in preview_download_targets:
+        assets.append(
+            PublishAsset(
+                source_path=target,
+                object_name=target.relative_to(preview_dir).as_posix(),
+                label=label,
+                description=description,
+                include_in_index=True,
+            )
+        )
+
+    return assets
+
+
 def handle_run(args: argparse.Namespace) -> int:
     """Handle the run subcommand."""
     file_config = load_config(args.config)
@@ -1464,6 +1500,9 @@ def handle_run(args: argparse.Namespace) -> int:
         enable_ce_rightsizing_fallback=args.enable_ce_rightsizing_fallback,
         enable_ce_savings_plan_fallback=args.enable_ce_savings_plan_fallback,
         output_dir=args.output_dir,
+        report_bucket=args.report_bucket,
+        report_client_id=args.report_client_id,
+        report_retention_days=args.report_retention_days,
     )
     if resolved.role_arn is None:
         raise RuntimeError("role_arn is required after config resolution.")
@@ -1486,6 +1525,10 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"enable_ce_rightsizing_fallback={resolved.enable_ce_rightsizing_fallback}")
     print(f"enable_ce_savings_plan_fallback={resolved.enable_ce_savings_plan_fallback}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
+    if resolved.report_bucket and resolved.report_client_id:
+        print(f"report_bucket={resolved.report_bucket}")
+        print(f"report_client_id={resolved.report_client_id}")
+        print(f"report_retention_days={resolved.report_retention_days}")
     _print_region_coverage(region_coverage)
     _print_schedule_config(resolved.schedule)
 
@@ -1720,16 +1763,17 @@ def handle_run(args: argparse.Namespace) -> int:
         download_links=output_download_links,
     )
     preview_dir = _artifact_output_dir(output_dir)
+    preview_download_targets = _build_dashboard_download_targets(
+        accounts_path=preview_dir / "downloads" / "accounts.json",
+        access_report_path=preview_dir / "downloads" / "access_report.json",
+        summary_path=summary_path,
+        coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
+        coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
+        schedule_recs_path=schedule_recs_path,
+    )
     preview_download_links = build_dashboard_download_links(
         preview_dir / "index.html",
-        _build_dashboard_download_targets(
-            accounts_path=preview_dir / "downloads" / "accounts.json",
-            access_report_path=preview_dir / "downloads" / "access_report.json",
-            summary_path=summary_path,
-            coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
-            coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
-            schedule_recs_path=schedule_recs_path,
-        ),
+        preview_download_targets,
     )
     preview_html = render_dashboard_html(
         account_map,
@@ -1763,6 +1807,34 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"summary_path={summary_path}")
     print(f"preview_path={preview_path}")
     print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
+    if resolved.report_bucket and resolved.report_client_id:
+        published_report = publish_report_site_to_s3(
+            session=session,
+            bucket=resolved.report_bucket,
+            client_id=resolved.report_client_id,
+            retention_days=resolved.report_retention_days,
+            preview_dir=preview_dir,
+            assets=_build_s3_publish_assets(
+                preview_dir=preview_dir,
+                preview_download_targets=preview_download_targets,
+            ),
+            build_index_html=lambda download_links, stylesheet_path: render_dashboard_html(
+                account_map,
+                account_id=account_output_label,
+                region=resolved.region,
+                access_report=access_report,
+                spend_baseline=spend_baseline,
+                spend_baseline_error=(
+                    spend_baseline_error if isinstance(spend_baseline_error, str) else None
+                ),
+                coh_summary=coh_summaries_snapshot,
+                recommendations=coh_normalized_recommendations,
+                schedule_recommendations=schedule_recommendations,
+                download_links=download_links,
+                stylesheet_path=stylesheet_path,
+            ),
+        )
+        print(f"Report URL: {published_report.report_url}")
 
     return 0
 
