@@ -282,6 +282,11 @@ def test_render_dashboard_html_includes_download_links() -> None:
             Path("/tmp/out/index.html"),
             [
                 (
+                    "Download All",
+                    "Zipped preview bundle with the report HTML and linked artifacts.",
+                    Path("/tmp/out/report-bundle.zip"),
+                ),
+                (
                     "Accounts JSON",
                     "Normalized account inventory with environment classification metadata.",
                     Path("/tmp/out/downloads/accounts.json"),
@@ -295,8 +300,11 @@ def test_render_dashboard_html_includes_download_links() -> None:
         ),
     )
 
+    assert "Privacy + Retention" in html
     assert "Download Files" in html
+    assert "Download All" in html
     assert "Accounts JSON" in html
     assert "Summary JSON" in html
+    assert 'href="report-bundle.zip"' in html
     assert 'href="downloads/accounts.json"' in html
     assert 'href="summary.json"' in html

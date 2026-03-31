@@ -468,6 +468,7 @@ def test_handle_run_enables_cost_optimization_hub(
         report_bucket="s3://report-bucket",
         report_client_id="acme-prod",
         report_retention_days=14,
+        no_upload=False,
     )
 
     result = cli.handle_run(args)
@@ -650,19 +651,33 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Rightsizing / Idle Deletion" in dashboard_html
     assert "Savings by Lever" in dashboard_html
     assert "Download Files" in dashboard_html
+    assert "Privacy + Retention" in dashboard_html
 
     preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
+    assert "Privacy + Retention" in preview_html
     assert "Download Files" in preview_html
+    assert 'href="report-bundle.zip"' in preview_html
     assert 'href="downloads/accounts.json"' in preview_html
     assert 'href="downloads/access_report.json"' in preview_html
     assert 'href="downloads/exports.csv"' in preview_html
     assert 'href="downloads/exports.json"' in preview_html
     assert 'href="summary.json"' in preview_html
     assert 'href="schedule/schedule_recs.csv"' in preview_html
+    assert (tmp_path / "out" / "report-bundle.zip").exists()
     assert (tmp_path / "out" / "downloads" / "accounts.json").exists()
     assert (tmp_path / "out" / "downloads" / "access_report.json").exists()
     assert (tmp_path / "out" / "downloads" / "exports.csv").exists()
     assert (tmp_path / "out" / "downloads" / "exports.json").exists()
+
+    publish_report_site_to_s3.reset_mock()
+    args.no_upload = True
+    result = cli.handle_run(args)
+
+    assert result == 0
+    publish_report_site_to_s3.assert_not_called()
+    no_upload_output = capsys.readouterr().out
+    assert "upload_enabled=False" in no_upload_output
+    assert "Report URL:" not in no_upload_output
 
 
 def test_merge_coh_collection_status_marks_module_degraded_when_collection_fails() -> None:

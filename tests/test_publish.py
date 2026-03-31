@@ -121,11 +121,16 @@ def test_publish_report_site_to_s3_uploads_bundle_and_cleans_up_old_prefixes(
     download_links = captured["download_links"]
     assert isinstance(download_links, list)
     assert [link["filename"] for link in download_links] == [
+        "report-bundle.zip",
         "exports.csv",
         "exports.json",
         "summary.json",
     ]
-    assert download_links[0]["href"] == (
+    assert (
+        download_links[0]["href"] == "https://example.com/acme/run-123/report-bundle.zip?exp=604800"
+    )
+    assert download_links[0]["variant"] == "primary"
+    assert download_links[1]["href"] == (
         "https://example.com/acme/run-123/downloads/exports.csv?exp=604800"
     )
 

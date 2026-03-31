@@ -74,6 +74,17 @@ def _build_executive_summary(
     return summary
 
 
+def _default_privacy_context() -> dict[str, str]:
+    """Return the default privacy section for local-only reports."""
+    return {
+        "mode_label": "Local-only output",
+        "mode_variant": "default",
+        "storage_location": "Artifacts stay in the local output directories for this run only.",
+        "access_model": "No S3 upload or presigned sharing was used for this report.",
+        "retention_policy": "Retention is fully local and manual unless you delete or archive it.",
+    }
+
+
 def _resolve_coh_total_display(coh_context: dict[str, Any] | None) -> str | None:
     """Choose a COH total savings display for executive summary cards."""
     if coh_context is None:
@@ -768,6 +779,7 @@ def build_dashboard_download_links(
                         start=dashboard_output.parent,
                     )
                 ).as_posix(),
+                "variant": "primary" if target_path.suffix == ".zip" else "default",
             }
         )
 
@@ -780,6 +792,7 @@ def render_dashboard_html(
     title: str = "FinOps Pack Dashboard",
     subtitle: str = "AWS Organizations account inventory and environment classification.",
     stylesheet_path: str | None = None,
+    privacy_context: dict[str, str] | None = None,
     generated_at: str | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
@@ -815,6 +828,7 @@ def render_dashboard_html(
         title=title,
         subtitle=subtitle,
         stylesheet_path=stylesheet_path,
+        privacy_context=privacy_context or _default_privacy_context(),
         generated_at=generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
         account_id=account_id,
         region=region,
@@ -855,6 +869,7 @@ def write_dashboard(
     destination: str | Path,
     *,
     stylesheet_path: str | None = None,
+    privacy_context: dict[str, str] | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
@@ -872,6 +887,7 @@ def write_dashboard(
         render_dashboard_html(
             account_map,
             stylesheet_path=stylesheet_path,
+            privacy_context=privacy_context,
             account_id=account_id,
             region=region,
             access_report=access_report,

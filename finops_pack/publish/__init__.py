@@ -6,7 +6,12 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from finops_pack.publish.s3 import PublishAsset, PublishedReport, publish_report_site_to_s3
+from finops_pack.publish.s3 import (
+    PublishAsset,
+    PublishedReport,
+    publish_report_site_to_s3,
+    write_preview_bundle,
+)
 
 
 def publish_preview_site(
@@ -46,4 +51,5 @@ __all__ = [
     "PublishedReport",
     "publish_preview_site",
     "publish_report_site_to_s3",
+    "write_preview_bundle",
 ]

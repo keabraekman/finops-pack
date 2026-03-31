@@ -59,7 +59,12 @@ from finops_pack.prerequisites import (
     CE_RESOURCE_LEVEL_DOC_NOTE,
     CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
-from finops_pack.publish import PublishAsset, publish_preview_site, publish_report_site_to_s3
+from finops_pack.publish import (
+    PublishAsset,
+    publish_preview_site,
+    publish_report_site_to_s3,
+    write_preview_bundle,
+)
 from finops_pack.render.dashboard import (
     build_dashboard_download_links,
     render_dashboard_html,
@@ -81,6 +86,7 @@ RECENT_COMPLETED_DAY_END_OFFSET = 1
 RESOURCE_COST_14D_COLUMN = "Resource cost (14d)"
 CE_RIGHTSIZING_FALLBACK_MODULE_ID = "ce_rightsizing_fallback"
 CE_SAVINGS_PLAN_FALLBACK_MODULE_ID = "ce_savings_plan_fallback"
+REPORT_BUNDLE_NAME = "report-bundle.zip"
 
 
 def _ce_resource_level_doc_guidance() -> str:
@@ -1290,6 +1296,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Days to retain older report prefixes in S3 before deletion (default: 7).",
     )
     run_parser.add_argument(
+        "--no-upload",
+        action="store_true",
+        help="Force fully local output even when report_bucket/report_client_id are configured.",
+    )
+    run_parser.add_argument(
         "--rate-limit-safe-mode",
         action="store_true",
         help="Reduce request burstiness and retry throttled Cost Optimization Hub calls.",
@@ -1369,6 +1380,7 @@ def _write_account_outputs(
     coh_summary: dict[str, Any] | None = None,
     recommendations: list[NormalizedRecommendation] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
+    privacy_context: dict[str, str] | None = None,
     download_links: list[dict[str, str]] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Write JSON and HTML artifacts for classified accounts."""
@@ -1393,6 +1405,7 @@ def _write_account_outputs(
         coh_summary=coh_summary,
         recommendations=recommendations,
         schedule_recommendations=schedule_recommendations,
+        privacy_context=privacy_context,
         download_links=download_links,
     )
 
@@ -1404,28 +1417,42 @@ def _build_dashboard_download_targets(
     accounts_path: Path,
     access_report_path: Path,
     summary_path: Path,
+    bundle_path: Path | None = None,
     coh_csv_export_path: Path | None = None,
     coh_json_export_path: Path | None = None,
     schedule_recs_path: Path | None = None,
 ) -> list[tuple[str, str, Path]]:
     """Build labeled dashboard download targets."""
-    targets = [
-        (
-            "Accounts JSON",
-            "Normalized account inventory with environment classification metadata.",
-            accounts_path,
-        ),
-        (
-            "Access Report JSON",
-            "Billing prerequisite checks, module readiness, and region coverage.",
-            access_report_path,
-        ),
-        (
-            "Summary JSON",
-            "Diff-friendly run totals for accounts, COH collection, and scheduling outputs.",
-            summary_path,
-        ),
-    ]
+    targets: list[tuple[str, str, Path]] = []
+
+    if bundle_path is not None:
+        targets.append(
+            (
+                "Download All",
+                "Zipped preview bundle with the report HTML and linked artifacts.",
+                bundle_path,
+            )
+        )
+
+    targets.extend(
+        [
+            (
+                "Accounts JSON",
+                "Normalized account inventory with environment classification metadata.",
+                accounts_path,
+            ),
+            (
+                "Access Report JSON",
+                "Billing prerequisite checks, module readiness, and region coverage.",
+                access_report_path,
+            ),
+            (
+                "Summary JSON",
+                "Diff-friendly run totals for accounts, COH collection, and scheduling outputs.",
+                summary_path,
+            ),
+        ]
+    )
 
     if coh_csv_export_path is not None:
         targets.append(
@@ -1471,6 +1498,8 @@ def _build_s3_publish_assets(
     ]
 
     for label, description, target in preview_download_targets:
+        if target.name == REPORT_BUNDLE_NAME:
+            continue
         assets.append(
             PublishAsset(
                 source_path=target,
@@ -1482,6 +1511,48 @@ def _build_s3_publish_assets(
         )
 
     return assets
+
+
+def _build_report_privacy_context(
+    *,
+    upload_enabled: bool,
+    no_upload: bool,
+    report_bucket: str | None,
+    report_client_id: str | None,
+    report_retention_days: int,
+) -> dict[str, str]:
+    """Build the privacy and retention disclosure shown at the top of the report."""
+    if upload_enabled and report_bucket and report_client_id:
+        presigned_days = min(report_retention_days, 7)
+        return {
+            "mode_label": "Operator bucket upload",
+            "mode_variant": "primary",
+            "storage_location": (
+                "Artifacts are published to an operator-managed S3 bucket under "
+                f"s3://{report_bucket}/{report_client_id}/<run-id>/."
+            ),
+            "access_model": (
+                "The shared report and downloads use presigned URLs that expire after up to "
+                f"{presigned_days} day(s)."
+            ),
+            "retention_policy": (
+                "Older report prefixes in that bucket are deleted after "
+                f"{report_retention_days} day(s)."
+            ),
+        }
+
+    if no_upload:
+        access_model = "Cloud upload was disabled for this run with --no-upload."
+    else:
+        access_model = "No S3 upload configuration was provided for this run."
+
+    return {
+        "mode_label": "Local-only output",
+        "mode_variant": "default",
+        "storage_location": "Artifacts stay in the local output and out directories only.",
+        "access_model": access_model,
+        "retention_policy": "Retention is local and manual because nothing was uploaded.",
+    }
 
 
 def handle_run(args: argparse.Namespace) -> int:
@@ -1507,6 +1578,16 @@ def handle_run(args: argparse.Namespace) -> int:
     if resolved.role_arn is None:
         raise RuntimeError("role_arn is required after config resolution.")
     region_coverage = _build_region_coverage(resolve_regions(resolved))
+    upload_enabled = bool(
+        not args.no_upload and resolved.report_bucket and resolved.report_client_id
+    )
+    privacy_context = _build_report_privacy_context(
+        upload_enabled=upload_enabled,
+        no_upload=args.no_upload,
+        report_bucket=resolved.report_bucket,
+        report_client_id=resolved.report_client_id,
+        report_retention_days=resolved.report_retention_days,
+    )
 
     session = assume_role_session(
         role_arn=resolved.role_arn,
@@ -1525,10 +1606,12 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"enable_ce_rightsizing_fallback={resolved.enable_ce_rightsizing_fallback}")
     print(f"enable_ce_savings_plan_fallback={resolved.enable_ce_savings_plan_fallback}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
-    if resolved.report_bucket and resolved.report_client_id:
+    if upload_enabled and resolved.report_bucket and resolved.report_client_id:
         print(f"report_bucket={resolved.report_bucket}")
         print(f"report_client_id={resolved.report_client_id}")
         print(f"report_retention_days={resolved.report_retention_days}")
+    elif args.no_upload:
+        print("upload_enabled=False")
     _print_region_coverage(region_coverage)
     _print_schedule_config(resolved.schedule)
 
@@ -1736,16 +1819,20 @@ def handle_run(args: argparse.Namespace) -> int:
         detail_errors=coh_detail_errors,
     )
     output_dashboard_path = output_dir / "dashboard.html"
+    preview_dir = _artifact_output_dir(output_dir)
+    preview_bundle_path = preview_dir / REPORT_BUNDLE_NAME
+    output_download_targets = _build_dashboard_download_targets(
+        accounts_path=output_dir / "accounts.json",
+        access_report_path=output_dir / "access_report.json",
+        summary_path=summary_path,
+        bundle_path=preview_bundle_path,
+        coh_csv_export_path=coh_csv_export_path,
+        coh_json_export_path=coh_json_export_path,
+        schedule_recs_path=schedule_recs_path,
+    )
     output_download_links = build_dashboard_download_links(
         output_dashboard_path,
-        _build_dashboard_download_targets(
-            accounts_path=output_dir / "accounts.json",
-            access_report_path=output_dir / "access_report.json",
-            summary_path=summary_path,
-            coh_csv_export_path=coh_csv_export_path,
-            coh_json_export_path=coh_json_export_path,
-            schedule_recs_path=schedule_recs_path,
-        ),
+        output_download_targets,
     )
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
         account_map,
@@ -1760,13 +1847,14 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
+        privacy_context=privacy_context,
         download_links=output_download_links,
     )
-    preview_dir = _artifact_output_dir(output_dir)
     preview_download_targets = _build_dashboard_download_targets(
         accounts_path=preview_dir / "downloads" / "accounts.json",
         access_report_path=preview_dir / "downloads" / "access_report.json",
         summary_path=summary_path,
+        bundle_path=preview_bundle_path,
         coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
         coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
         schedule_recs_path=schedule_recs_path,
@@ -1787,6 +1875,7 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
+        privacy_context=privacy_context,
         download_links=preview_download_links,
     )
     preview_path = publish_preview_site(
@@ -1800,6 +1889,10 @@ def handle_run(args: argparse.Namespace) -> int:
             (coh_json_export_path, preview_dir / "downloads" / coh_json_export_path.name),
         ],
     )
+    write_preview_bundle(
+        preview_dir=preview_dir,
+        destination=preview_bundle_path,
+    )
     print(f"account_count={len(account_map)}")
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
@@ -1807,7 +1900,7 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"summary_path={summary_path}")
     print(f"preview_path={preview_path}")
     print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
-    if resolved.report_bucket and resolved.report_client_id:
+    if upload_enabled and resolved.report_bucket and resolved.report_client_id:
         published_report = publish_report_site_to_s3(
             session=session,
             bucket=resolved.report_bucket,
@@ -1830,6 +1923,7 @@ def handle_run(args: argparse.Namespace) -> int:
                 coh_summary=coh_summaries_snapshot,
                 recommendations=coh_normalized_recommendations,
                 schedule_recommendations=schedule_recommendations,
+                privacy_context=privacy_context,
                 download_links=download_links,
                 stylesheet_path=stylesheet_path,
             ),
@@ -1845,6 +1939,13 @@ def handle_demo(args: argparse.Namespace) -> int:
     fixture_dir = Path(file_config.demo_fixture_dir)
     output_dir = Path(args.output_dir or file_config.output_dir)
     region_coverage = _build_region_coverage(resolve_regions(file_config))
+    privacy_context = _build_report_privacy_context(
+        upload_enabled=False,
+        no_upload=True,
+        report_bucket=file_config.report_bucket,
+        report_client_id=file_config.report_client_id,
+        report_retention_days=file_config.report_retention_days,
+    )
     access_report = AccessReport(
         account_id="Demo Fixture",
         region_coverage=region_coverage,
@@ -1864,12 +1965,15 @@ def handle_demo(args: argparse.Namespace) -> int:
         access_report=access_report,
     )
     output_dashboard_path = output_dir / "dashboard.html"
+    preview_dir = _artifact_output_dir(output_dir)
+    preview_bundle_path = preview_dir / REPORT_BUNDLE_NAME
     output_download_links = build_dashboard_download_links(
         output_dashboard_path,
         _build_dashboard_download_targets(
             accounts_path=output_dir / "accounts.json",
             access_report_path=output_dir / "access_report.json",
             summary_path=summary_path,
+            bundle_path=preview_bundle_path,
         ),
     )
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
@@ -1878,15 +1982,16 @@ def handle_demo(args: argparse.Namespace) -> int:
         region=file_config.region,
         account_id="Demo Fixture",
         access_report=access_report,
+        privacy_context=privacy_context,
         download_links=output_download_links,
     )
-    preview_dir = _artifact_output_dir(output_dir)
     preview_download_links = build_dashboard_download_links(
         preview_dir / "index.html",
         _build_dashboard_download_targets(
             accounts_path=preview_dir / "downloads" / "accounts.json",
             access_report_path=preview_dir / "downloads" / "access_report.json",
             summary_path=summary_path,
+            bundle_path=preview_bundle_path,
         ),
     )
     preview_html = render_dashboard_html(
@@ -1894,6 +1999,7 @@ def handle_demo(args: argparse.Namespace) -> int:
         account_id="Demo Fixture",
         region=file_config.region,
         access_report=access_report,
+        privacy_context=privacy_context,
         download_links=preview_download_links,
     )
     preview_path = publish_preview_site(
@@ -1904,6 +2010,10 @@ def handle_demo(args: argparse.Namespace) -> int:
             (accounts_path, preview_dir / "downloads" / accounts_path.name),
             (access_report_path, preview_dir / "downloads" / access_report_path.name),
         ],
+    )
+    write_preview_bundle(
+        preview_dir=preview_dir,
+        destination=preview_bundle_path,
     )
 
     print("Running finops-pack in demo mode")

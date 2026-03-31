@@ -45,6 +45,14 @@ class PublishedReport:
     deleted_prefix_count: int
 
 
+def write_preview_bundle(*, preview_dir: str | Path, destination: str | Path) -> Path:
+    """Write a zipped bundle of the local preview site."""
+    destination_path = Path(destination)
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    destination_path.write_bytes(_build_preview_bundle_bytes(preview_dir))
+    return destination_path
+
+
 def publish_report_site_to_s3(
     *,
     session: Any,
@@ -87,7 +95,23 @@ def publish_report_site_to_s3(
     if stylesheet_url is None:
         raise ValueError("style.css must be uploaded before publishing the S3 report index.")
 
-    download_links = _build_external_download_links(assets, asset_urls)
+    bundle_url = _generate_presigned_url(
+        s3_client,
+        bucket=bucket,
+        key=_build_object_key(prefix, DEFAULT_BUNDLE_NAME),
+        retention_days=retention_days,
+    )
+    download_links = [
+        {
+            "label": "Download All",
+            "description": "Zipped preview bundle with the report HTML and linked artifacts.",
+            "filename": DEFAULT_BUNDLE_NAME,
+            "format": "ZIP",
+            "href": bundle_url,
+            "variant": "primary",
+        },
+        *_build_external_download_links(assets, asset_urls),
+    ]
     index_html = build_index_html(download_links, stylesheet_url)
     index_key = _build_object_key(prefix, "index.html")
     _upload_bytes(
@@ -169,6 +193,7 @@ def _build_external_download_links(
                 "filename": target_path.name,
                 "format": target_path.suffix.lstrip(".").upper() or "FILE",
                 "href": href,
+                "variant": "primary" if target_path.suffix == ".zip" else "default",
             }
         )
     return download_links
@@ -190,19 +215,11 @@ def _upload_bundle(
     preview_dir: str | Path,
 ) -> None:
     """Zip the local preview directory and upload it as a bundle."""
-    preview_root = Path(preview_dir)
-    bundle_buffer = BytesIO()
-    with zipfile.ZipFile(bundle_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(preview_root.rglob("*")):
-            if path.is_dir():
-                continue
-            archive.write(path, arcname=path.relative_to(preview_root).as_posix())
-
     _upload_bytes(
         s3_client,
         bucket=bucket,
         key=key,
-        body=bundle_buffer.getvalue(),
+        body=_build_preview_bundle_bytes(preview_dir),
         content_type="application/zip",
     )
 
@@ -255,6 +272,18 @@ def _guess_content_type(path: Path) -> str:
         return "text/css; charset=utf-8"
     guessed, _ = mimetypes.guess_type(path.name)
     return guessed or "application/octet-stream"
+
+
+def _build_preview_bundle_bytes(preview_dir: str | Path) -> bytes:
+    """Return the zipped bytes for a preview directory."""
+    preview_root = Path(preview_dir)
+    bundle_buffer = BytesIO()
+    with zipfile.ZipFile(bundle_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(preview_root.rglob("*")):
+            if path.is_dir() or path.name == DEFAULT_BUNDLE_NAME:
+                continue
+            archive.write(path, arcname=path.relative_to(preview_root).as_posix())
+    return bundle_buffer.getvalue()
 
 
 def _generate_presigned_url(

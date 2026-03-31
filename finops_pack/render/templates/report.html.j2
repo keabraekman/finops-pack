@@ -33,6 +33,37 @@
         </div>
       </header>
 
+      {% if privacy_context %}
+        <section class="section section-tight">
+          <div class="privacy-banner">
+            <div class="privacy-header">
+              <div>
+                <p class="eyebrow privacy-eyebrow">Privacy + Retention</p>
+                <h2>Privacy + Retention</h2>
+              </div>
+              <span class="privacy-pill privacy-pill-{{ privacy_context.mode_variant or 'default' }}">
+                {{ privacy_context.mode_label }}
+              </span>
+            </div>
+
+            <div class="privacy-grid">
+              <article class="privacy-card">
+                <p class="summary-label">Storage Location</p>
+                <p class="status-note">{{ privacy_context.storage_location }}</p>
+              </article>
+              <article class="privacy-card">
+                <p class="summary-label">Access Model</p>
+                <p class="status-note">{{ privacy_context.access_model }}</p>
+              </article>
+              <article class="privacy-card">
+                <p class="summary-label">Retention</p>
+                <p class="status-note">{{ privacy_context.retention_policy }}</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       <section class="section">
         <h2>Executive Summary</h2>
         {% if executive_summary_cards %}
@@ -229,7 +260,7 @@
           <h2>Download Files</h2>
           <div class="download-grid">
             {% for link in download_links %}
-              <a class="download-card" href="{{ link.href }}">
+              <a class="download-card{% if link.variant == 'primary' %} download-card-primary{% endif %}" href="{{ link.href }}">
                 <div class="download-card-header">
                   <h3>{{ link.label }}</h3>
                   <span class="badge badge-low">{{ link.format }}</span>
