@@ -5,7 +5,11 @@ from unittest.mock import Mock
 from zipfile import ZipFile
 
 import finops_pack.publish.s3 as s3_publish
-from finops_pack.publish import PublishAsset, publish_report_site_to_s3
+from finops_pack.publish import (
+    PublishAsset,
+    load_previous_summary_from_s3,
+    publish_report_site_to_s3,
+)
 
 
 def test_publish_report_site_to_s3_uploads_bundle_and_cleans_up_old_prefixes(
@@ -33,8 +37,6 @@ def test_publish_report_site_to_s3_uploads_bundle_and_cleans_up_old_prefixes(
             return fixed_now if tz is not None else fixed_now.replace(tzinfo=None)
 
     monkeypatch.setattr(s3_publish, "datetime", FixedDateTime)
-    monkeypatch.setattr(s3_publish, "_build_run_id", lambda now=None: "run-123")
-
     s3_client = Mock()
     paginator = Mock()
     paginator.paginate.return_value = [
@@ -74,6 +76,7 @@ def test_publish_report_site_to_s3_uploads_bundle_and_cleans_up_old_prefixes(
         session=session,
         bucket="report-bucket",
         client_id="acme",
+        run_id="run-123",
         retention_days=7,
         preview_dir=preview_dir,
         assets=[
@@ -166,3 +169,33 @@ def test_publish_report_site_to_s3_uploads_bundle_and_cleans_up_old_prefixes(
             ]
         },
     )
+
+
+def test_load_previous_summary_from_s3_returns_latest_prior_summary() -> None:
+    s3_client = Mock()
+    paginator = Mock()
+    paginator.paginate.return_value = [
+        {
+            "Contents": [
+                {"Key": "acme/20260329T010203Z-prev/summary.json"},
+                {"Key": "acme/20260331T010203Z-prev/summary.json"},
+            ]
+        }
+    ]
+    s3_client.get_paginator.return_value = paginator
+    s3_client.get_object.return_value = {
+        "Body": BytesIO(b'{"run": {"generated_at": "2026-03-31 01:02:03 UTC"}}')
+    }
+    session = Mock()
+    session.client.return_value = s3_client
+
+    result = load_previous_summary_from_s3(
+        session=session,
+        bucket="report-bucket",
+        client_id="acme",
+        current_run_id="20260401T010203Z-current",
+    )
+
+    assert result is not None
+    assert result.run_id == "20260331T010203Z-prev"
+    assert result.summary_key == "acme/20260331T010203Z-prev/summary.json"

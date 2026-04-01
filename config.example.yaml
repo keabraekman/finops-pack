@@ -13,8 +13,8 @@ enable_ce_savings_plan_fallback: false
 rate_limit_safe_mode: false
 output_dir: output
 demo_fixture_dir: demo/fixtures
+client_id: your-client-id
 report_bucket: finops-pack-reports
-report_client_id: your-client-id
 report_retention_days: 7
 schedule:
   timezone: UTC

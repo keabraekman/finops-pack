@@ -22,6 +22,18 @@
             <span class="meta-label">Generated</span>
             <span class="meta-value">{{ generated_at or "TBD" }}</span>
           </div>
+          {% if client_id %}
+            <div class="meta-row">
+              <span class="meta-label">Client</span>
+              <span class="meta-value">{{ client_id }}</span>
+            </div>
+          {% endif %}
+          {% if run_id %}
+            <div class="meta-row">
+              <span class="meta-label">Run ID</span>
+              <span class="meta-value">{{ run_id }}</span>
+            </div>
+          {% endif %}
           <div class="meta-row">
             <span class="meta-label">Account</span>
             <span class="meta-value">{{ account_id or "TBD" }}</span>

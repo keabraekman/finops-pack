@@ -7,8 +7,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from finops_pack.publish.s3 import (
+    PreviousRunSummary,
     PublishAsset,
     PublishedReport,
+    build_run_id,
+    load_previous_summary_from_s3,
     publish_report_site_to_s3,
     write_preview_bundle,
 )
@@ -49,6 +52,9 @@ def publish_preview_site(
 __all__ = [
     "PublishAsset",
     "PublishedReport",
+    "PreviousRunSummary",
+    "build_run_id",
+    "load_previous_summary_from_s3",
     "publish_preview_site",
     "publish_report_site_to_s3",
     "write_preview_bundle",

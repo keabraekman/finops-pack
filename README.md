@@ -126,7 +126,7 @@ If Cost Explorer resource-level daily data is not enabled, the prerequisites det
 
 `schedule` is an optional config block for business-hours-aware workflows. It defaults to `timezone: UTC` and `Mon-Fri, 9-5`, and you can override both the timezone and business-hours window in `config.yaml`.
 
-`report_bucket` and `report_client_id` optionally enable S3 publishing. When both are set, finops-pack uploads a zipped preview bundle plus report artifacts under `s3://<bucket>/<client-id>/<run-id>/`, deletes older client prefixes after `report_retention_days` (default `7`), adds a `Privacy + Retention` section to the report, and prints a single presigned `Report URL` for the uploaded `index.html`. Pass `--no-upload` to force fully local output even when those config keys are present.
+`client_id` optionally labels the report and is also used as the S3 prefix client identifier. When both `client_id` and `report_bucket` are set, finops-pack uploads a zipped preview bundle plus report artifacts under `s3://<bucket>/<client-id>/<run-id>/`, deletes older client prefixes after `report_retention_days` (default `7`), compares `summary.json` against the most recent prior S3 run when available, adds a `Privacy + Retention` section to the report, and prints a single presigned `Report URL` for the uploaded `index.html`. Pass `--client my-startup` to set the client on the CLI, and pass `--no-upload` to force fully local output even when upload config is present.
 
 Best-effort EC2 inventory now walks the configured `regions` across AWS Organizations accounts and derives each member-account target role by swapping the account ID in the provided `--role-arn`. Accounts or regions that fail are skipped and recorded in `out/raw/ec2_inventory.json`.
 
@@ -160,7 +160,7 @@ Successful runs now write:
 - `out/index.html`: preview-friendly dashboard landing page with embedded tables and download links
 - `out/report-bundle.zip`: zipped preview bundle for one-click download of the report and linked artifacts
 - `out/downloads/*.json|csv`: copied JSON/CSV artifacts linked from the preview dashboard
-- optional S3 publish: a zipped preview bundle plus presigned `index.html`, `exports.csv`, `exports.json`, and `report-bundle.zip` URLs under `s3://<report_bucket>/<report_client_id>/<run-id>/`
+- optional S3 publish: a zipped preview bundle plus presigned `index.html`, `exports.csv`, `exports.json`, and `report-bundle.zip` URLs under `s3://<report_bucket>/<client_id>/<run-id>/`
 - `out/raw/ce_total_spend.json`: raw `GetCostAndUsage` response for the last 30 completed days of spend, grouped by month
 - `out/raw/coh_summaries.json`: raw `ListRecommendationSummaries` pages plus flattened items and deduped savings total
 - `out/raw/coh_recommendations.json`: raw `ListRecommendations` pages plus flattened items

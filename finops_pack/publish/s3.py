@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import mimetypes
 import posixpath
 import uuid
@@ -45,6 +46,15 @@ class PublishedReport:
     deleted_prefix_count: int
 
 
+@dataclass(frozen=True)
+class PreviousRunSummary:
+    """Most recent previously published summary for a client."""
+
+    run_id: str
+    summary_key: str
+    summary: dict[str, Any]
+
+
 def write_preview_bundle(*, preview_dir: str | Path, destination: str | Path) -> Path:
     """Write a zipped bundle of the local preview site."""
     destination_path = Path(destination)
@@ -58,6 +68,7 @@ def publish_report_site_to_s3(
     session: Any,
     bucket: str,
     client_id: str,
+    run_id: str,
     retention_days: int,
     preview_dir: str | Path,
     assets: Sequence[PublishAsset],
@@ -65,7 +76,6 @@ def publish_report_site_to_s3(
 ) -> PublishedReport:
     """Upload report artifacts to S3 and return presigned access URLs."""
     s3_client = session.client("s3")
-    run_id = _build_run_id()
     prefix = _build_prefix(client_id, run_id)
 
     _upload_bundle(
@@ -152,10 +162,55 @@ def publish_report_site_to_s3(
     )
 
 
-def _build_run_id(now: datetime | None = None) -> str:
+def build_run_id(now: datetime | None = None) -> str:
     """Return a timestamped, collision-resistant run ID."""
     current_time = now or datetime.now(UTC)
     return f"{current_time.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+
+
+def load_previous_summary_from_s3(
+    *,
+    session: Any,
+    bucket: str,
+    client_id: str,
+    current_run_id: str | None = None,
+) -> PreviousRunSummary | None:
+    """Return the most recent previously published summary for a client, if one exists."""
+    s3_client = session.client("s3")
+    client_prefix = f"{client_id.strip('/')}/"
+    latest_key: str | None = None
+    latest_run_id: str | None = None
+
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=client_prefix):
+        for item in page.get("Contents", []):
+            key = item["Key"]
+            relative_key = key[len(client_prefix) :]
+            run_segment, separator, remainder = relative_key.partition("/")
+            if (
+                not separator
+                or not run_segment
+                or remainder != "summary.json"
+                or run_segment == current_run_id
+            ):
+                continue
+            if latest_run_id is None or run_segment > latest_run_id:
+                latest_run_id = run_segment
+                latest_key = key
+
+    if latest_key is None or latest_run_id is None:
+        return None
+
+    response = s3_client.get_object(Bucket=bucket, Key=latest_key)
+    payload = json.loads(response["Body"].read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Previous summary at {latest_key} is not a JSON object.")
+
+    return PreviousRunSummary(
+        run_id=latest_run_id,
+        summary_key=latest_key,
+        summary=payload,
+    )
 
 
 def _build_prefix(client_id: str, run_id: str) -> str:

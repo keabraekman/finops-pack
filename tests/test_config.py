@@ -24,8 +24,8 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.client_id is None
     assert cfg.report_bucket is None
-    assert cfg.report_client_id is None
     assert cfg.report_retention_days == 7
     assert cfg.schedule.timezone == "UTC"
     assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu", "fri"]
@@ -55,8 +55,8 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
+                "client_id: acme-prod",
                 "report_bucket: s3://finops-pack-reports",
-                "report_client_id: acme-prod",
                 "report_retention_days: 14",
                 "schedule:",
                 "  timezone: America/Los_Angeles",
@@ -92,8 +92,8 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.client_id == "acme-prod"
     assert cfg.report_bucket == "finops-pack-reports"
-    assert cfg.report_client_id == "acme-prod"
     assert cfg.report_retention_days == 14
     assert cfg.schedule.timezone == "America/Los_Angeles"
     assert cfg.schedule.business_hours.days == ["mon", "tue", "wed", "thu"]
@@ -118,8 +118,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
         rate_limit_safe_mode=False,
         output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
+        client_id="from-file-client",
         report_bucket="from-file-bucket",
-        report_client_id="from-file-client",
         report_retention_days=7,
         prod_account_ids=["111111111111"],
         nonprod_account_ids=["222222222222"],
@@ -138,8 +138,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
         enable_ce_savings_plan_fallback=True,
         rate_limit_safe_mode=True,
         output_dir="from-cli-output",
+        client_id="from-cli-client",
         report_bucket="s3://from-cli-bucket",
-        report_client_id="from-cli-client",
         report_retention_days=14,
     )
 
@@ -155,8 +155,8 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.enable_ce_savings_plan_fallback is True
     assert merged.rate_limit_safe_mode is True
     assert merged.output_dir == "from-cli-output"
+    assert merged.client_id == "from-cli-client"
     assert merged.report_bucket == "from-cli-bucket"
-    assert merged.report_client_id == "from-cli-client"
     assert merged.report_retention_days == 14
     assert merged.prod_account_ids == ["111111111111"]
     assert merged.nonprod_account_ids == ["222222222222"]
@@ -179,13 +179,13 @@ def test_merge_run_config_requires_role_arn() -> None:
             enable_ce_savings_plan_fallback=False,
             rate_limit_safe_mode=False,
             output_dir=None,
+            client_id=None,
             report_bucket=None,
-            report_client_id=None,
             report_retention_days=None,
         )
 
 
-def test_load_config_requires_report_bucket_and_client_id_together(tmp_path: Path) -> None:
+def test_load_config_requires_client_id_when_report_bucket_is_set(tmp_path: Path) -> None:
     config_file = tmp_path / "config.yaml"
     config_file.write_text(
         "\n".join(
@@ -196,8 +196,41 @@ def test_load_config_requires_report_bucket_and_client_id_together(tmp_path: Pat
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="report_bucket and report_client_id"):
+    with pytest.raises(ValueError, match="report_bucket requires client_id"):
         load_config(str(config_file))
+
+
+def test_load_config_accepts_client_id_without_report_bucket(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "client_id: local-client",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(str(config_file))
+
+    assert cfg.client_id == "local-client"
+    assert cfg.report_bucket is None
+
+
+def test_load_config_supports_report_client_id_as_compatibility_alias(tmp_path: Path) -> None:
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "report_client_id: acme-prod",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(str(config_file))
+
+    assert cfg.client_id == "acme-prod"
 
 
 def test_load_config_rejects_non_positive_report_retention_days(tmp_path: Path) -> None:
@@ -206,7 +239,7 @@ def test_load_config_rejects_non_positive_report_retention_days(tmp_path: Path) 
         "\n".join(
             [
                 "report_bucket: finops-pack-reports",
-                "report_client_id: acme-prod",
+                "client_id: acme-prod",
                 "report_retention_days: 0",
             ]
         ),

@@ -429,8 +429,24 @@ def test_handle_run_enables_cost_optimization_hub(
         )
     )
     publish_report_site_to_s3 = Mock(return_value=Mock(report_url="https://example.com/report"))
+    build_run_id = Mock(return_value="20260401T010203Z-test")
+    load_previous_summary_from_s3 = Mock(
+        return_value=Mock(
+            run_id="20260331T010203Z-prev",
+            summary={
+                "run": {"generated_at": "2026-03-31 01:02:03 UTC"},
+                "accounts": {"total": 2},
+                "coh": {
+                    "normalized_recommendation_count": 3,
+                    "normalized_estimated_monthly_savings": 30.0,
+                },
+            },
+        )
+    )
 
     monkeypatch.setattr(cli, "assume_role_session", assume_role_session)
+    monkeypatch.setattr(cli, "build_run_id", build_run_id)
+    monkeypatch.setattr(cli, "load_previous_summary_from_s3", load_previous_summary_from_s3)
     monkeypatch.setattr(cli, "enable_cost_optimization_hub", enable_coh)
     monkeypatch.setattr(cli, "_build_access_report", build_access_report)
     monkeypatch.setattr(cli, "collect_spend_baseline", collect_spend_baseline)
@@ -465,8 +481,8 @@ def test_handle_run_enables_cost_optimization_hub(
         rate_limit_safe_mode=True,
         config=str(config_file),
         output_dir=str(tmp_path / "output"),
+        client_id="acme-prod",
         report_bucket="s3://report-bucket",
-        report_client_id="acme-prod",
         report_retention_days=14,
         no_upload=False,
     )
@@ -523,11 +539,18 @@ def test_handle_run_enables_cost_optimization_hub(
         region_name="us-east-1",
         rate_limit_safe_mode=True,
     )
+    load_previous_summary_from_s3.assert_called_once_with(
+        session=session,
+        bucket="report-bucket",
+        client_id="acme-prod",
+        current_run_id="20260401T010203Z-test",
+    )
     publish_report_site_to_s3.assert_called_once()
     publish_call = publish_report_site_to_s3.call_args.kwargs
     assert publish_call["session"] is session
     assert publish_call["bucket"] == "report-bucket"
     assert publish_call["client_id"] == "acme-prod"
+    assert publish_call["run_id"] == "20260401T010203Z-test"
     assert publish_call["retention_days"] == 14
     assert publish_call["preview_dir"] == (tmp_path / "out")
     assert callable(publish_call["build_index_html"])
@@ -548,9 +571,12 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "enable_ce_rightsizing_fallback=False" in output
     assert "enable_ce_savings_plan_fallback=False" in output
     assert "rate_limit_safe_mode=True" in output
+    assert "client_id=acme-prod" in output
+    assert "run_id=20260401T010203Z-test" in output
     assert "report_bucket=report-bucket" in output
-    assert "report_client_id=acme-prod" in output
     assert "report_retention_days=14" in output
+    assert "comparison_previous_run_id=20260331T010203Z-prev" in output
+    assert "savings_change_since_last_report=+$12.50 / month" in output
     assert "region_coverage=us-west-2,us-east-1" in output
     assert "schedule_timezone=America/New_York" in output
     assert "schedule_business_hours=mon,tue,wed,thu,fri@08:00-18:00" in output
@@ -578,6 +604,8 @@ def test_handle_run_enables_cost_optimization_hub(
     )
     assert access_report["region_coverage"]["regions"] == ["us-west-2", "us-east-1"]
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["run"]["client_id"] == "acme-prod"
+    assert summary["run"]["run_id"] == "20260401T010203Z-test"
     assert summary["run"]["rate_limit_safe_mode"] is True
     assert summary["run"]["schedule"]["timezone"] == "America/New_York"
     assert summary["run"]["schedule"]["business_hours"]["start_hour"] == 8
@@ -594,6 +622,8 @@ def test_handle_run_enables_cost_optimization_hub(
     assert summary["coh"]["recommendation_count"] == 1
     assert summary["coh"]["normalized_recommendation_count"] == 1
     assert summary["coh"]["normalized_estimated_monthly_savings"] == 42.5
+    assert summary["comparison"]["previous_run_id"] == "20260331T010203Z-prev"
+    assert summary["comparison"]["savings_change_since_last_report"] == 12.5
     coh_summaries = json.loads(
         (tmp_path / "out" / "raw" / "coh_summaries.json").read_text(encoding="utf-8")
     )
@@ -647,13 +677,18 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Prod vs Non-Prod Savings" in dashboard_html
     assert "730-hour monthly normalization" in dashboard_html
     assert "Recommendation IDs can expire after about 24 hours" in dashboard_html
+    assert "FinOps Pack Dashboard - acme-prod" in dashboard_html
+    assert "20260401T010203Z-test" in dashboard_html
     assert "prod-core" in dashboard_html
     assert "Rightsizing / Idle Deletion" in dashboard_html
     assert "Savings by Lever" in dashboard_html
+    assert "Savings Change Since Last Report" in dashboard_html
+    assert "+$12.50 / month" in dashboard_html
     assert "Download Files" in dashboard_html
     assert "Privacy + Retention" in dashboard_html
 
     preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
+    assert "FinOps Pack Dashboard - acme-prod" in preview_html
     assert "Privacy + Retention" in preview_html
     assert "Download Files" in preview_html
     assert 'href="report-bundle.zip"' in preview_html
@@ -670,10 +705,12 @@ def test_handle_run_enables_cost_optimization_hub(
     assert (tmp_path / "out" / "downloads" / "exports.json").exists()
 
     publish_report_site_to_s3.reset_mock()
+    load_previous_summary_from_s3.reset_mock()
     args.no_upload = True
     result = cli.handle_run(args)
 
     assert result == 0
+    load_previous_summary_from_s3.assert_not_called()
     publish_report_site_to_s3.assert_not_called()
     no_upload_output = capsys.readouterr().out
     assert "upload_enabled=False" in no_upload_output

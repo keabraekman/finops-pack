@@ -278,6 +278,13 @@ def test_render_dashboard_html_includes_prerequisites_and_remediation_steps() ->
 def test_render_dashboard_html_includes_download_links() -> None:
     html = render_dashboard_html(
         [AccountMapEntry(account_id="111111111111", name="prod-core", environment="prod")],
+        title="FinOps Pack Dashboard - acme-prod",
+        client_id="acme-prod",
+        run_id="20260401T010203Z-test",
+        comparison_context={
+            "savings_change_display": "+$12.50 / month",
+            "summary": "vs 2026-03-31 01:02:03 UTC · -2 recommendations · -1 accounts",
+        },
         download_links=build_dashboard_download_links(
             Path("/tmp/out/index.html"),
             [
@@ -301,6 +308,10 @@ def test_render_dashboard_html_includes_download_links() -> None:
     )
 
     assert "Privacy + Retention" in html
+    assert "acme-prod" in html
+    assert "20260401T010203Z-test" in html
+    assert "Savings Change Since Last Report" in html
+    assert "+$12.50 / month" in html
     assert "Download Files" in html
     assert "Download All" in html
     assert "Accounts JSON" in html

@@ -61,6 +61,8 @@ from finops_pack.prerequisites import (
 )
 from finops_pack.publish import (
     PublishAsset,
+    build_run_id,
+    load_previous_summary_from_s3,
     publish_preview_site,
     publish_report_site_to_s3,
     write_preview_bundle,
@@ -1059,6 +1061,9 @@ def _print_schedule_recommendation_summary(
 
 def _build_summary_payload(
     *,
+    generated_at: str,
+    client_id: str | None,
+    run_id: str,
     region: str,
     schedule: ScheduleConfig,
     rate_limit_safe_mode: bool,
@@ -1074,6 +1079,7 @@ def _build_summary_payload(
     recommendations_snapshot: dict[str, Any] | None = None,
     normalized_recommendations: list[NormalizedRecommendation] | None = None,
     detail_errors: list[str] | None = None,
+    comparison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the diff-friendly totals artifact for the current run."""
     environment_counts = {"prod": 0, "nonprod": 0, "unknown": 0}
@@ -1097,6 +1103,9 @@ def _build_summary_payload(
 
     return {
         "run": {
+            "generated_at": generated_at,
+            "client_id": client_id,
+            "run_id": run_id,
             "account_id": access_report.account_id,
             "region": region,
             "schedule": {
@@ -1196,47 +1205,16 @@ def _build_summary_payload(
                 [module for module in access_report.modules if module.status == "DEGRADED"]
             ),
         },
+        "comparison": comparison,
     }
 
 
 def _write_summary_output(
     output_dir: Path,
-    *,
-    region: str,
-    schedule: ScheduleConfig,
-    rate_limit_safe_mode: bool,
-    account_map: list[AccountMapEntry],
-    access_report: AccessReport,
-    ec2_inventory_snapshot: dict[str, Any] | None = None,
-    schedule_recommendations: list[dict[str, Any]] | None = None,
-    ce_rightsizing_snapshot: dict[str, Any] | None = None,
-    ce_savings_plan_snapshot: dict[str, Any] | None = None,
-    spend_baseline: SpendBaseline | None = None,
-    resource_daily_snapshot: dict[str, Any] | None = None,
-    summaries_snapshot: dict[str, Any] | None = None,
-    recommendations_snapshot: dict[str, Any] | None = None,
-    normalized_recommendations: list[NormalizedRecommendation] | None = None,
-    detail_errors: list[str] | None = None,
+    payload: dict[str, Any],
 ) -> Path:
     """Persist the summary totals artifact under out/summary.json."""
     summary_path = _artifact_output_dir(output_dir) / "summary.json"
-    payload = _build_summary_payload(
-        region=region,
-        schedule=schedule,
-        rate_limit_safe_mode=rate_limit_safe_mode,
-        account_map=account_map,
-        access_report=access_report,
-        ec2_inventory_snapshot=ec2_inventory_snapshot,
-        schedule_recommendations=schedule_recommendations,
-        ce_rightsizing_snapshot=ce_rightsizing_snapshot,
-        ce_savings_plan_snapshot=ce_savings_plan_snapshot,
-        spend_baseline=spend_baseline,
-        resource_daily_snapshot=resource_daily_snapshot,
-        summaries_snapshot=summaries_snapshot,
-        recommendations_snapshot=recommendations_snapshot,
-        normalized_recommendations=normalized_recommendations,
-        detail_errors=detail_errors,
-    )
     return _write_json_snapshot(summary_path, payload)
 
 
@@ -1287,8 +1265,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional S3 bucket where report artifacts are published.",
     )
     run_parser.add_argument(
+        "--client",
+        dest="client_id",
+        help="Client identifier used in the report title and S3 prefix.",
+    )
+    run_parser.add_argument(
         "--report-client-id",
-        help="Client identifier used in the S3 report prefix: client-id/run-id/.",
+        dest="client_id",
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
         "--report-retention-days",
@@ -1298,7 +1282,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--no-upload",
         action="store_true",
-        help="Force fully local output even when report_bucket/report_client_id are configured.",
+        help="Force fully local output even when report_bucket/client_id are configured.",
     )
     run_parser.add_argument(
         "--rate-limit-safe-mode",
@@ -1372,6 +1356,10 @@ def _write_account_outputs(
     account_map: list[AccountMapEntry],
     *,
     output_dir: Path,
+    title: str,
+    generated_at: str,
+    client_id: str | None,
+    run_id: str,
     region: str,
     account_id: str,
     access_report: AccessReport,
@@ -1381,6 +1369,7 @@ def _write_account_outputs(
     recommendations: list[NormalizedRecommendation] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
     privacy_context: dict[str, str] | None = None,
+    comparison_context: dict[str, str] | None = None,
     download_links: list[dict[str, str]] | None = None,
 ) -> tuple[Path, Path, Path]:
     """Write JSON and HTML artifacts for classified accounts."""
@@ -1397,6 +1386,10 @@ def _write_account_outputs(
     write_dashboard(
         account_map,
         dashboard_path,
+        title=title,
+        generated_at=generated_at,
+        client_id=client_id,
+        run_id=run_id,
         account_id=account_id,
         region=region,
         access_report=access_report,
@@ -1406,6 +1399,7 @@ def _write_account_outputs(
         recommendations=recommendations,
         schedule_recommendations=schedule_recommendations,
         privacy_context=privacy_context,
+        comparison_context=comparison_context,
         download_links=download_links,
     )
 
@@ -1518,18 +1512,18 @@ def _build_report_privacy_context(
     upload_enabled: bool,
     no_upload: bool,
     report_bucket: str | None,
-    report_client_id: str | None,
+    client_id: str | None,
     report_retention_days: int,
 ) -> dict[str, str]:
     """Build the privacy and retention disclosure shown at the top of the report."""
-    if upload_enabled and report_bucket and report_client_id:
+    if upload_enabled and report_bucket and client_id:
         presigned_days = min(report_retention_days, 7)
         return {
             "mode_label": "Operator bucket upload",
             "mode_variant": "primary",
             "storage_location": (
                 "Artifacts are published to an operator-managed S3 bucket under "
-                f"s3://{report_bucket}/{report_client_id}/<run-id>/."
+                f"s3://{report_bucket}/{client_id}/<run-id>/."
             ),
             "access_model": (
                 "The shared report and downloads use presigned URLs that expire after up to "
@@ -1555,6 +1549,68 @@ def _build_report_privacy_context(
     }
 
 
+def _build_report_title(client_id: str | None) -> str:
+    """Return the dashboard title for the run."""
+    if client_id:
+        return f"FinOps Pack Dashboard - {client_id}"
+    return "FinOps Pack Dashboard"
+
+
+def _format_signed_number(value: int) -> str:
+    """Render an integer delta with an explicit sign."""
+    return f"{value:+d}"
+
+
+def _format_signed_currency(value: float) -> str:
+    """Render a currency delta with an explicit sign."""
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _build_summary_comparison_context(
+    current_summary: dict[str, Any],
+    previous_summary: dict[str, Any],
+    *,
+    previous_run_id: str,
+) -> dict[str, Any]:
+    """Build comparison metadata between the current and previous summaries."""
+    current_savings = float(
+        current_summary.get("coh", {}).get("normalized_estimated_monthly_savings") or 0.0
+    )
+    previous_savings = float(
+        previous_summary.get("coh", {}).get("normalized_estimated_monthly_savings") or 0.0
+    )
+    savings_delta = round(current_savings - previous_savings, 2)
+    recommendation_delta = int(
+        current_summary.get("coh", {}).get("normalized_recommendation_count") or 0
+    ) - int(previous_summary.get("coh", {}).get("normalized_recommendation_count") or 0)
+    account_delta = int(current_summary.get("accounts", {}).get("total") or 0) - int(
+        previous_summary.get("accounts", {}).get("total") or 0
+    )
+    previous_run = previous_summary.get("run")
+    previous_generated_at = (
+        previous_run.get("generated_at") if isinstance(previous_run, dict) else None
+    )
+    previous_label = (
+        str(previous_generated_at)
+        if isinstance(previous_generated_at, str) and previous_generated_at
+        else previous_run_id
+    )
+
+    return {
+        "previous_run_id": previous_run_id,
+        "previous_label": previous_label,
+        "savings_change_since_last_report": savings_delta,
+        "normalized_recommendation_count_change": recommendation_delta,
+        "account_total_change": account_delta,
+        "savings_change_display": f"{_format_signed_currency(savings_delta)} / month",
+        "summary": (
+            f"vs {previous_label} · {_format_signed_number(recommendation_delta)} recommendations"
+            f" · {_format_signed_number(account_delta)} accounts"
+        ),
+    }
+
+
 def handle_run(args: argparse.Namespace) -> int:
     """Handle the run subcommand."""
     file_config = load_config(args.config)
@@ -1571,21 +1627,23 @@ def handle_run(args: argparse.Namespace) -> int:
         enable_ce_rightsizing_fallback=args.enable_ce_rightsizing_fallback,
         enable_ce_savings_plan_fallback=args.enable_ce_savings_plan_fallback,
         output_dir=args.output_dir,
+        client_id=args.client_id,
         report_bucket=args.report_bucket,
-        report_client_id=args.report_client_id,
         report_retention_days=args.report_retention_days,
     )
     if resolved.role_arn is None:
         raise RuntimeError("role_arn is required after config resolution.")
+    run_started_at = datetime.now(UTC)
+    run_generated_at = run_started_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    run_id = build_run_id(run_started_at)
+    report_title = _build_report_title(resolved.client_id)
     region_coverage = _build_region_coverage(resolve_regions(resolved))
-    upload_enabled = bool(
-        not args.no_upload and resolved.report_bucket and resolved.report_client_id
-    )
+    upload_enabled = bool(not args.no_upload and resolved.report_bucket and resolved.client_id)
     privacy_context = _build_report_privacy_context(
         upload_enabled=upload_enabled,
         no_upload=args.no_upload,
         report_bucket=resolved.report_bucket,
-        report_client_id=resolved.report_client_id,
+        client_id=resolved.client_id,
         report_retention_days=resolved.report_retention_days,
     )
 
@@ -1606,9 +1664,11 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"enable_ce_rightsizing_fallback={resolved.enable_ce_rightsizing_fallback}")
     print(f"enable_ce_savings_plan_fallback={resolved.enable_ce_savings_plan_fallback}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
-    if upload_enabled and resolved.report_bucket and resolved.report_client_id:
+    if resolved.client_id:
+        print(f"client_id={resolved.client_id}")
+    print(f"run_id={run_id}")
+    if upload_enabled and resolved.report_bucket and resolved.client_id:
         print(f"report_bucket={resolved.report_bucket}")
-        print(f"report_client_id={resolved.report_client_id}")
         print(f"report_retention_days={resolved.report_retention_days}")
     elif args.no_upload:
         print("upload_enabled=False")
@@ -1800,8 +1860,10 @@ def handle_run(args: argparse.Namespace) -> int:
         if account_collection_error is None
         else access_report.account_id or "Current account"
     )
-    summary_path = _write_summary_output(
-        output_dir,
+    summary_payload = _build_summary_payload(
+        generated_at=run_generated_at,
+        client_id=resolved.client_id,
+        run_id=run_id,
         region=resolved.region,
         schedule=resolved.schedule,
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
@@ -1818,6 +1880,30 @@ def handle_run(args: argparse.Namespace) -> int:
         normalized_recommendations=coh_normalized_recommendations,
         detail_errors=coh_detail_errors,
     )
+    comparison_context: dict[str, Any] | None = None
+    if upload_enabled and resolved.report_bucket and resolved.client_id:
+        try:
+            previous_summary = load_previous_summary_from_s3(
+                session=session,
+                bucket=resolved.report_bucket,
+                client_id=resolved.client_id,
+                current_run_id=run_id,
+            )
+        except (ClientError, BotoCoreError, KeyError, TypeError, ValueError):
+            previous_summary = None
+        if previous_summary is not None:
+            comparison_context = _build_summary_comparison_context(
+                summary_payload,
+                previous_summary.summary,
+                previous_run_id=previous_summary.run_id,
+            )
+            summary_payload["comparison"] = comparison_context
+            print(f"comparison_previous_run_id={previous_summary.run_id}")
+            print(
+                f"savings_change_since_last_report={comparison_context['savings_change_display']}"
+            )
+
+    summary_path = _write_summary_output(output_dir, summary_payload)
     output_dashboard_path = output_dir / "dashboard.html"
     preview_dir = _artifact_output_dir(output_dir)
     preview_bundle_path = preview_dir / REPORT_BUNDLE_NAME
@@ -1837,6 +1923,10 @@ def handle_run(args: argparse.Namespace) -> int:
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
         account_map,
         output_dir=output_dir,
+        title=report_title,
+        generated_at=run_generated_at,
+        client_id=resolved.client_id,
+        run_id=run_id,
         region=resolved.region,
         account_id=account_output_label,
         access_report=access_report,
@@ -1848,6 +1938,7 @@ def handle_run(args: argparse.Namespace) -> int:
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
         privacy_context=privacy_context,
+        comparison_context=comparison_context,
         download_links=output_download_links,
     )
     preview_download_targets = _build_dashboard_download_targets(
@@ -1865,6 +1956,10 @@ def handle_run(args: argparse.Namespace) -> int:
     )
     preview_html = render_dashboard_html(
         account_map,
+        title=report_title,
+        generated_at=run_generated_at,
+        client_id=resolved.client_id,
+        run_id=run_id,
         account_id=account_output_label,
         region=resolved.region,
         access_report=access_report,
@@ -1876,6 +1971,7 @@ def handle_run(args: argparse.Namespace) -> int:
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
         privacy_context=privacy_context,
+        comparison_context=comparison_context,
         download_links=preview_download_links,
     )
     preview_path = publish_preview_site(
@@ -1900,11 +1996,12 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"summary_path={summary_path}")
     print(f"preview_path={preview_path}")
     print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
-    if upload_enabled and resolved.report_bucket and resolved.report_client_id:
+    if upload_enabled and resolved.report_bucket and resolved.client_id:
         published_report = publish_report_site_to_s3(
             session=session,
             bucket=resolved.report_bucket,
-            client_id=resolved.report_client_id,
+            client_id=resolved.client_id,
+            run_id=run_id,
             retention_days=resolved.report_retention_days,
             preview_dir=preview_dir,
             assets=_build_s3_publish_assets(
@@ -1913,6 +2010,10 @@ def handle_run(args: argparse.Namespace) -> int:
             ),
             build_index_html=lambda download_links, stylesheet_path: render_dashboard_html(
                 account_map,
+                title=report_title,
+                generated_at=run_generated_at,
+                client_id=resolved.client_id,
+                run_id=run_id,
                 account_id=account_output_label,
                 region=resolved.region,
                 access_report=access_report,
@@ -1924,6 +2025,7 @@ def handle_run(args: argparse.Namespace) -> int:
                 recommendations=coh_normalized_recommendations,
                 schedule_recommendations=schedule_recommendations,
                 privacy_context=privacy_context,
+                comparison_context=comparison_context,
                 download_links=download_links,
                 stylesheet_path=stylesheet_path,
             ),
@@ -1938,12 +2040,16 @@ def handle_demo(args: argparse.Namespace) -> int:
     file_config = load_config(args.config)
     fixture_dir = Path(file_config.demo_fixture_dir)
     output_dir = Path(args.output_dir or file_config.output_dir)
+    run_started_at = datetime.now(UTC)
+    run_generated_at = run_started_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+    run_id = build_run_id(run_started_at)
+    report_title = _build_report_title(file_config.client_id)
     region_coverage = _build_region_coverage(resolve_regions(file_config))
     privacy_context = _build_report_privacy_context(
         upload_enabled=False,
         no_upload=True,
         report_bucket=file_config.report_bucket,
-        report_client_id=file_config.report_client_id,
+        client_id=file_config.client_id,
         report_retention_days=file_config.report_retention_days,
     )
     access_report = AccessReport(
@@ -1958,11 +2064,16 @@ def handle_demo(args: argparse.Namespace) -> int:
     )
     summary_path = _write_summary_output(
         output_dir,
-        region=file_config.region,
-        schedule=file_config.schedule,
-        rate_limit_safe_mode=file_config.rate_limit_safe_mode,
-        account_map=account_map,
-        access_report=access_report,
+        _build_summary_payload(
+            generated_at=run_generated_at,
+            client_id=file_config.client_id,
+            run_id=run_id,
+            region=file_config.region,
+            schedule=file_config.schedule,
+            rate_limit_safe_mode=file_config.rate_limit_safe_mode,
+            account_map=account_map,
+            access_report=access_report,
+        ),
     )
     output_dashboard_path = output_dir / "dashboard.html"
     preview_dir = _artifact_output_dir(output_dir)
@@ -1979,6 +2090,10 @@ def handle_demo(args: argparse.Namespace) -> int:
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
         account_map,
         output_dir=output_dir,
+        title=report_title,
+        generated_at=run_generated_at,
+        client_id=file_config.client_id,
+        run_id=run_id,
         region=file_config.region,
         account_id="Demo Fixture",
         access_report=access_report,
@@ -1996,6 +2111,10 @@ def handle_demo(args: argparse.Namespace) -> int:
     )
     preview_html = render_dashboard_html(
         account_map,
+        title=report_title,
+        generated_at=run_generated_at,
+        client_id=file_config.client_id,
+        run_id=run_id,
         account_id="Demo Fixture",
         region=file_config.region,
         access_report=access_report,
@@ -2018,6 +2137,9 @@ def handle_demo(args: argparse.Namespace) -> int:
 
     print("Running finops-pack in demo mode")
     print(f"fixture_dir={fixture_dir}")
+    if file_config.client_id:
+        print(f"client_id={file_config.client_id}")
+    print(f"run_id={run_id}")
     _print_region_coverage(region_coverage)
     _print_schedule_config(file_config.schedule)
     print(f"account_count={len(account_map)}")

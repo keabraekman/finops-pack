@@ -74,8 +74,8 @@ class AppConfig:
     rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
+    client_id: str | None = None
     report_bucket: str | None = None
-    report_client_id: str | None = None
     report_retention_days: int = 7
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     prod_account_ids: list[str] = field(default_factory=list)
@@ -230,10 +230,10 @@ def _validate_config(config: AppConfig) -> AppConfig:
         raise ValueError("region must be included in regions when regions is set.")
     if not config.output_dir:
         raise ValueError("output_dir must not be empty.")
-    if bool(config.report_bucket) != bool(config.report_client_id):
-        raise ValueError("report_bucket and report_client_id must be set together.")
-    if config.report_client_id is not None and "/" in config.report_client_id:
-        raise ValueError("report_client_id must not contain '/'.")
+    if config.report_bucket and config.client_id is None:
+        raise ValueError("report_bucket requires client_id.")
+    if config.client_id is not None and "/" in config.client_id:
+        raise ValueError("client_id must not contain '/'.")
     if config.report_retention_days < 1:
         raise ValueError("report_retention_days must be greater than 0.")
     return config
@@ -255,6 +255,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
+        "client_id",
         "report_bucket",
         "report_client_id",
         "report_retention_days",
@@ -276,11 +277,23 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         key="nonprod_account_ids",
     )
     normalized["regions"] = _normalize_region_list(normalized.get("regions"))
-    normalized["report_bucket"] = _normalize_report_bucket(normalized.get("report_bucket"))
-    normalized["report_client_id"] = _normalize_optional_string(
+    normalized_client_id = _normalize_optional_string(
+        normalized.get("client_id"),
+        key="client_id",
+    )
+    normalized_report_client_id = _normalize_optional_string(
         normalized.get("report_client_id"),
         key="report_client_id",
     )
+    if (
+        normalized_client_id is not None
+        and normalized_report_client_id is not None
+        and normalized_client_id != normalized_report_client_id
+    ):
+        raise ValueError("client_id and report_client_id must match when both are set.")
+    normalized["client_id"] = normalized_client_id or normalized_report_client_id
+    normalized["report_bucket"] = _normalize_report_bucket(normalized.get("report_bucket"))
+    normalized.pop("report_client_id", None)
     normalized["report_retention_days"] = _normalize_positive_int(
         normalized.get("report_retention_days", 7),
         key="report_retention_days",
@@ -336,8 +349,8 @@ def merge_run_config(
     enable_ce_rightsizing_fallback: bool,
     enable_ce_savings_plan_fallback: bool,
     output_dir: str | None,
+    client_id: str | None,
     report_bucket: str | None,
-    report_client_id: str | None,
     report_retention_days: int | None,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
@@ -367,15 +380,15 @@ def merge_run_config(
             rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,
             demo_fixture_dir=file_config.demo_fixture_dir,
+            client_id=(
+                _normalize_optional_string(client_id, key="client_id")
+                if client_id is not None
+                else file_config.client_id
+            ),
             report_bucket=(
                 _normalize_report_bucket(report_bucket)
                 if report_bucket is not None
                 else file_config.report_bucket
-            ),
-            report_client_id=(
-                _normalize_optional_string(report_client_id, key="report_client_id")
-                if report_client_id is not None
-                else file_config.report_client_id
             ),
             report_retention_days=(
                 _normalize_positive_int(

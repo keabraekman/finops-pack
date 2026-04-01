@@ -119,6 +119,7 @@ def _build_executive_summary_cards(
     spend_baseline_context: dict[str, Any] | None,
     coh_context: dict[str, Any] | None,
     schedule_context: dict[str, Any] | None,
+    comparison_context: dict[str, str] | None,
 ) -> list[dict[str, str]]:
     """Build top-level executive summary cards for the dashboard."""
     grouped = _group_accounts(list(account_map))
@@ -173,6 +174,15 @@ def _build_executive_summary_cards(
                     f"range {schedule_context['total_low_display']} to "
                     f"{schedule_context['total_high_display']} / day"
                 ),
+            }
+        )
+
+    if comparison_context is not None:
+        cards.append(
+            {
+                "label": "Savings Change Since Last Report",
+                "value": str(comparison_context["savings_change_display"]),
+                "meta": str(comparison_context["summary"]),
             }
         )
 
@@ -793,7 +803,10 @@ def render_dashboard_html(
     subtitle: str = "AWS Organizations account inventory and environment classification.",
     stylesheet_path: str | None = None,
     privacy_context: dict[str, str] | None = None,
+    comparison_context: dict[str, Any] | None = None,
     generated_at: str | None = None,
+    client_id: str | None = None,
+    run_id: str | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
@@ -830,6 +843,8 @@ def render_dashboard_html(
         stylesheet_path=stylesheet_path,
         privacy_context=privacy_context or _default_privacy_context(),
         generated_at=generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        client_id=client_id,
+        run_id=run_id,
         account_id=account_id,
         region=region,
         executive_summary=_build_executive_summary(account_map, access_report),
@@ -838,6 +853,7 @@ def render_dashboard_html(
             spend_baseline_context=spend_baseline_context,
             coh_context=coh_context,
             schedule_context=schedule_context,
+            comparison_context=comparison_context,
         ),
         savings_by_lever=_build_savings_by_lever_context(
             coh_context,
@@ -868,8 +884,14 @@ def write_dashboard(
     account_map: list[AccountMapEntry],
     destination: str | Path,
     *,
+    title: str = "FinOps Pack Dashboard",
+    subtitle: str = "AWS Organizations account inventory and environment classification.",
     stylesheet_path: str | None = None,
     privacy_context: dict[str, str] | None = None,
+    comparison_context: dict[str, Any] | None = None,
+    generated_at: str | None = None,
+    client_id: str | None = None,
+    run_id: str | None = None,
     account_id: str | None = "AWS Organizations",
     region: str = "us-east-1",
     access_report: AccessReport | None = None,
@@ -886,8 +908,14 @@ def write_dashboard(
     destination_path.write_text(
         render_dashboard_html(
             account_map,
+            title=title,
+            subtitle=subtitle,
             stylesheet_path=stylesheet_path,
             privacy_context=privacy_context,
+            comparison_context=comparison_context,
+            generated_at=generated_at,
+            client_id=client_id,
+            run_id=run_id,
             account_id=account_id,
             region=region,
             access_report=access_report,
