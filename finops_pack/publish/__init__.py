@@ -22,6 +22,7 @@ def publish_preview_site(
     preview_dir: str | Path,
     html: str,
     stylesheet_source: str | Path,
+    extra_pages: Sequence[tuple[str | Path, str]] = (),
     asset_copies: Sequence[tuple[str | Path, str | Path]] = (),
 ) -> Path:
     """Write a self-contained preview site under the preview directory."""
@@ -30,6 +31,11 @@ def publish_preview_site(
 
     index_path = preview_root / "index.html"
     index_path.write_text(html, encoding="utf-8")
+
+    for page_name, page_html in extra_pages:
+        page_path = preview_root / Path(page_name)
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(page_html, encoding="utf-8")
 
     stylesheet_path = preview_root / "style.css"
     source_stylesheet_path = Path(stylesheet_source)

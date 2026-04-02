@@ -77,7 +77,9 @@ from finops_pack.publish import (
 )
 from finops_pack.render.dashboard import (
     build_dashboard_download_links,
+    render_appendix_html,
     render_dashboard_html,
+    write_appendix,
     write_dashboard,
 )
 from finops_pack.render.exporters import CsvExporter, JsonExporter
@@ -1533,6 +1535,7 @@ def _write_account_outputs(
         dashboard_path,
         title=title,
         report_mode=report_mode,
+        appendix_href="appendix.html" if report_mode == "lead_magnet" else None,
         generated_at=generated_at,
         client_id=client_id,
         run_id=run_id,
@@ -1549,6 +1552,29 @@ def _write_account_outputs(
         comparison_context=comparison_context,
         download_links=download_links,
     )
+    if report_mode == "lead_magnet":
+        write_appendix(
+            account_map,
+            output_dir / "appendix.html",
+            title=title,
+            report_mode=report_mode,
+            generated_at=generated_at,
+            client_id=client_id,
+            run_id=run_id,
+            account_id=account_id,
+            region=region,
+            access_report=access_report,
+            spend_baseline=spend_baseline,
+            spend_baseline_error=spend_baseline_error,
+            coh_summary=coh_summary,
+            recommendations=recommendations,
+            schedule_recommendations=schedule_recommendations,
+            action_opportunities=action_opportunities,
+            privacy_context=privacy_context,
+            comparison_context=comparison_context,
+            download_links=download_links,
+            dashboard_href=dashboard_path.name,
+        )
 
     return accounts_path, access_report_path, dashboard_path
 
@@ -1639,6 +1665,8 @@ def _build_s3_publish_assets(
     *,
     preview_dir: Path,
     preview_download_targets: list[tuple[str, str, Path]],
+    report_mode: str,
+    appendix_path: Path | None = None,
 ) -> list[PublishAsset]:
     """Build the S3 upload manifest from the local preview site."""
     assets = [
@@ -1658,6 +1686,21 @@ def _build_s3_publish_assets(
                 label=label,
                 description=description,
                 include_in_index=True,
+            )
+        )
+
+    if report_mode == "lead_magnet" and appendix_path is not None and appendix_path.exists():
+        assets.append(
+            PublishAsset(
+                source_path=appendix_path,
+                object_name="appendix.html",
+                label="Technical Appendix",
+                description=(
+                    "Separate operator appendix with validation, readiness, "
+                    "and raw context."
+                ),
+                include_in_index=True,
+                content_type="text/html; charset=utf-8",
             )
         )
 
@@ -2161,6 +2204,9 @@ def handle_run(args: argparse.Namespace) -> int:
         comparison_context=comparison_context,
         download_links=output_download_links,
     )
+    output_appendix_path = (
+        output_dir / "appendix.html" if resolved.report_mode == "lead_magnet" else None
+    )
     preview_download_targets = _build_dashboard_download_targets(
         accounts_path=preview_dir / "downloads" / "accounts.json",
         access_report_path=preview_dir / "downloads" / "access_report.json",
@@ -2196,11 +2242,44 @@ def handle_run(args: argparse.Namespace) -> int:
         privacy_context=privacy_context,
         comparison_context=comparison_context,
         download_links=preview_download_links,
+        appendix_href="appendix.html" if resolved.report_mode == "lead_magnet" else None,
+    )
+    preview_appendix_html = (
+        render_appendix_html(
+            account_map,
+            title=report_title,
+            report_mode=resolved.report_mode,
+            generated_at=run_generated_at,
+            client_id=resolved.client_id,
+            run_id=run_id,
+            account_id=account_output_label,
+            region=resolved.region,
+            access_report=access_report,
+            spend_baseline=spend_baseline,
+            spend_baseline_error=(
+                spend_baseline_error if isinstance(spend_baseline_error, str) else None
+            ),
+            coh_summary=coh_summaries_snapshot,
+            recommendations=coh_normalized_recommendations,
+            schedule_recommendations=schedule_recommendations,
+            action_opportunities=action_opportunities,
+            privacy_context=privacy_context,
+            comparison_context=comparison_context,
+            download_links=preview_download_links,
+            dashboard_href="index.html",
+        )
+        if resolved.report_mode == "lead_magnet"
+        else None
     )
     preview_path = publish_preview_site(
         preview_dir=preview_dir,
         html=preview_html,
         stylesheet_source=dashboard_path.parent / "style.css",
+        extra_pages=(
+            [("appendix.html", preview_appendix_html)]
+            if preview_appendix_html is not None
+            else []
+        ),
         asset_copies=[
             (accounts_path, preview_dir / "downloads" / accounts_path.name),
             (access_report_path, preview_dir / "downloads" / access_report_path.name),
@@ -2217,6 +2296,8 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
+    if output_appendix_path is not None:
+        print(f"appendix_path={output_appendix_path}")
     print(f"summary_path={summary_path}")
     print(f"preview_path={preview_path}")
     print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
@@ -2231,6 +2312,8 @@ def handle_run(args: argparse.Namespace) -> int:
             assets=_build_s3_publish_assets(
                 preview_dir=preview_dir,
                 preview_download_targets=preview_download_targets,
+                report_mode=resolved.report_mode,
+                appendix_path=preview_dir / "appendix.html",
             ),
             build_index_html=lambda download_links, stylesheet_path: render_dashboard_html(
                 account_map,
@@ -2252,8 +2335,22 @@ def handle_run(args: argparse.Namespace) -> int:
                 action_opportunities=action_opportunities,
                 privacy_context=privacy_context,
                 comparison_context=comparison_context,
-                download_links=download_links,
+                download_links=[
+                    link for link in download_links if link.get("filename") != "appendix.html"
+                ],
                 stylesheet_path=stylesheet_path,
+                appendix_href=(
+                    next(
+                        (
+                            link["href"]
+                            for link in download_links
+                            if link.get("filename") == "appendix.html"
+                        ),
+                        "appendix.html",
+                    )
+                    if resolved.report_mode == "lead_magnet"
+                    else None
+                ),
             ),
         )
         print(f"Report URL: {published_report.report_url}")
@@ -2334,6 +2431,12 @@ def handle_demo(args: argparse.Namespace) -> int:
         ),
         comparison=fixture_bundle.comparison_context,
     )
+    action_opportunities = build_action_opportunities(
+        account_map=fixture_bundle.account_map,
+        recommendations=fixture_bundle.recommendations,
+        schedule_recommendations=fixture_bundle.schedule_recommendations,
+        native_actions=fixture_bundle.native_actions,
+    )
     summary_path = _write_summary_output(
         output_dir,
         summary_payload,
@@ -2370,16 +2473,12 @@ def handle_demo(args: argparse.Namespace) -> int:
         coh_summary=fixture_bundle.coh_summary,
         recommendations=fixture_bundle.recommendations,
         schedule_recommendations=fixture_bundle.schedule_recommendations,
-        action_opportunities=build_action_opportunities(
-            account_map=fixture_bundle.account_map,
-            recommendations=fixture_bundle.recommendations,
-            schedule_recommendations=fixture_bundle.schedule_recommendations,
-            native_actions=fixture_bundle.native_actions,
-        ),
+        action_opportunities=action_opportunities,
         privacy_context=privacy_context,
         comparison_context=fixture_bundle.comparison_context,
         download_links=output_download_links,
     )
+    output_appendix_path = output_dir / "appendix.html" if report_mode == "lead_magnet" else None
     preview_download_links = build_dashboard_download_links(
         preview_dir / "index.html",
         _build_dashboard_download_targets(
@@ -2408,20 +2507,46 @@ def handle_demo(args: argparse.Namespace) -> int:
         coh_summary=fixture_bundle.coh_summary,
         recommendations=fixture_bundle.recommendations,
         schedule_recommendations=fixture_bundle.schedule_recommendations,
-        action_opportunities=build_action_opportunities(
-            account_map=fixture_bundle.account_map,
-            recommendations=fixture_bundle.recommendations,
-            schedule_recommendations=fixture_bundle.schedule_recommendations,
-            native_actions=fixture_bundle.native_actions,
-        ),
+        action_opportunities=action_opportunities,
         privacy_context=privacy_context,
         comparison_context=fixture_bundle.comparison_context,
         download_links=preview_download_links,
+        appendix_href="appendix.html" if report_mode == "lead_magnet" else None,
+    )
+    preview_appendix_html = (
+        render_appendix_html(
+            fixture_bundle.account_map,
+            title=report_title,
+            report_mode=report_mode,
+            generated_at=fixture_bundle.generated_at,
+            client_id=fixture_bundle.client_id,
+            run_id=fixture_bundle.run_id,
+            account_id=fixture_bundle.account_label,
+            region=fixture_bundle.region,
+            access_report=fixture_bundle.access_report,
+            spend_baseline=fixture_bundle.spend_baseline,
+            spend_baseline_error=fixture_bundle.spend_baseline_error,
+            coh_summary=fixture_bundle.coh_summary,
+            recommendations=fixture_bundle.recommendations,
+            schedule_recommendations=fixture_bundle.schedule_recommendations,
+            action_opportunities=action_opportunities,
+            privacy_context=privacy_context,
+            comparison_context=fixture_bundle.comparison_context,
+            download_links=preview_download_links,
+            dashboard_href="index.html",
+        )
+        if report_mode == "lead_magnet"
+        else None
     )
     preview_path = publish_preview_site(
         preview_dir=preview_dir,
         html=preview_html,
         stylesheet_source=dashboard_path.parent / "style.css",
+        extra_pages=(
+            [("appendix.html", preview_appendix_html)]
+            if preview_appendix_html is not None
+            else []
+        ),
         asset_copies=[
             (accounts_path, preview_dir / "downloads" / accounts_path.name),
             (access_report_path, preview_dir / "downloads" / access_report_path.name),
@@ -2452,6 +2577,8 @@ def handle_demo(args: argparse.Namespace) -> int:
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
+    if output_appendix_path is not None:
+        print(f"appendix_path={output_appendix_path}")
     print(f"summary_path={summary_path}")
     print(f"normalized_recommendations_path={normalized_path}")
     print(f"schedule_recs_path={schedule_recs_path}")

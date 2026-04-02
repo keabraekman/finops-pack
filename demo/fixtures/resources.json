@@ -14,15 +14,90 @@
   },
   {
     "provider": "aws",
+    "account_id": "111111111111",
+    "region": "us-west-2",
+    "service": "ec2",
+    "resource_id": "i-0123456789abcdeff",
+    "resource_name": "prod-jobs",
+    "arn": "arn:aws:ec2:us-west-2:111111111111:instance/i-0123456789abcdeff",
+    "tags": {
+      "Environment": "prod",
+      "Team": "data"
+    }
+  },
+  {
+    "provider": "aws",
     "account_id": "222222222222",
     "region": "us-east-1",
     "service": "ec2",
     "resource_id": "i-0feedbead12345678",
-    "resource_name": "sandbox-web",
+    "resource_name": "sandbox-web-1",
     "arn": "arn:aws:ec2:us-east-1:222222222222:instance/i-0feedbead12345678",
     "tags": {
       "Environment": "sandbox",
       "Owner": "platform"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "222222222222",
+    "region": "us-east-1",
+    "service": "ec2",
+    "resource_id": "i-0feedbead12345679",
+    "resource_name": "sandbox-batch-1",
+    "arn": "arn:aws:ec2:us-east-1:222222222222:instance/i-0feedbead12345679",
+    "tags": {
+      "Environment": "sandbox",
+      "Owner": "data"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "444444444444",
+    "region": "us-west-2",
+    "service": "ec2",
+    "resource_id": "i-0123demoanalytics",
+    "resource_name": "analytics-etl-1",
+    "arn": "arn:aws:ec2:us-west-2:444444444444:instance/i-0123demoanalytics",
+    "tags": {
+      "Environment": "nonprod",
+      "Owner": "analytics"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "222222222222",
+    "region": "us-east-1",
+    "service": "ebs",
+    "resource_id": "vol-0abc1234def567890",
+    "resource_name": "sandbox-orphaned-logs",
+    "arn": "arn:aws:ec2:us-east-1:222222222222:volume/vol-0abc1234def567890",
+    "tags": {
+      "Environment": "sandbox"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "444444444444",
+    "region": "us-west-2",
+    "service": "ebs",
+    "resource_id": "vol-0def9876abc543210",
+    "resource_name": "analytics-gp2-cache",
+    "arn": "arn:aws:ec2:us-west-2:444444444444:volume/vol-0def9876abc543210",
+    "tags": {
+      "Environment": "nonprod"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "333333333333",
+    "region": "us-east-1",
+    "service": "ebs",
+    "resource_id": "vol-0123aaaabbbbccccd",
+    "resource_name": "shared-detached-stage",
+    "arn": "arn:aws:ec2:us-east-1:333333333333:volume/vol-0123aaaabbbbccccd",
+    "tags": {
+      "Environment": "shared"
     }
   }
 ]

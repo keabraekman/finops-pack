@@ -870,6 +870,23 @@ def _build_action_context(
         sum(row["monthly_savings"] for row in action_rows),
         2,
     )
+    current_spend_amount = (
+        float(spend_baseline_context["total_amount"])
+        if spend_baseline_context is not None
+        and isinstance(spend_baseline_context.get("total_amount"), (int, float))
+        else None
+    )
+    total_savings_ratio_display: str | None = None
+    if (
+        current_spend_amount is not None
+        and current_spend_amount > 0
+        and total_monthly_savings > 0
+        and total_monthly_savings <= current_spend_amount
+    ):
+        total_savings_ratio_display = (
+            f"≈ {round((total_monthly_savings / current_spend_amount) * 100, 1):.1f}% "
+            "of current AWS spend"
+        )
     bucket_summaries = summarize_actions_by_bucket(action_opportunities or [])
     bucket_details: list[dict[str, Any]] = []
     for bucket_name in BUCKET_ORDER:
@@ -953,6 +970,7 @@ def _build_action_context(
             "USD",
         ),
         "show_additional_native_note": additional_native_monthly_savings > 0,
+        "total_savings_ratio_display": total_savings_ratio_display,
         "current_spend_display": (
             spend_baseline_context["total_spend_display"]
             if spend_baseline_context is not None
@@ -970,6 +988,104 @@ def _build_action_context(
         "bucket_summaries": bucket_summaries,
         "bucket_details": bucket_details,
         "comparison_context": comparison_context,
+    }
+
+
+def _build_dashboard_template_context(
+    account_map: list[AccountMapEntry],
+    *,
+    title: str,
+    subtitle: str,
+    report_mode: str,
+    stylesheet_path: str | None,
+    privacy_context: dict[str, str] | None,
+    comparison_context: dict[str, Any] | None,
+    generated_at: str | None,
+    client_id: str | None,
+    run_id: str | None,
+    account_id: str | None,
+    region: str,
+    access_report: AccessReport | None,
+    spend_baseline: SpendBaseline | None,
+    spend_baseline_error: str | None,
+    coh_summary: dict[str, Any] | None,
+    recommendations: Sequence[NormalizedRecommendation] | None,
+    schedule_recommendations: Sequence[dict[str, Any]] | None,
+    action_opportunities: Sequence[ActionOpportunity] | None,
+    download_links: Sequence[dict[str, str]] | None,
+) -> dict[str, Any]:
+    """Build the shared render context used by the dashboard and appendix pages."""
+    grouped = _group_accounts(account_map)
+    recommendation_list = list(recommendations or [])
+    spend_baseline_context = _build_spend_baseline_context(
+        spend_baseline,
+        spend_baseline_error,
+    )
+    coh_context = _build_coh_context(coh_summary, account_map, recommendation_list)
+    schedule_context = _build_schedule_context(schedule_recommendations, account_map)
+    prerequisites_context = _build_prerequisites_context(access_report)
+    remediation_context = _build_remediation_context(
+        access_report,
+        has_coh_recommendations=bool(recommendation_list),
+    )
+    resolved_action_opportunities = (
+        list(action_opportunities)
+        if action_opportunities is not None
+        else build_action_opportunities(
+            account_map=account_map,
+            recommendations=recommendation_list,
+            schedule_recommendations=schedule_recommendations,
+        )
+    )
+    action_context = _build_action_context(
+        resolved_action_opportunities,
+        spend_baseline_context=spend_baseline_context,
+        comparison_context=comparison_context,
+    )
+
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "report_mode": report_mode,
+        "stylesheet_path": stylesheet_path,
+        "privacy_context": privacy_context or _default_privacy_context(),
+        "generated_at": generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "client_id": client_id,
+        "run_id": run_id,
+        "account_id": account_id,
+        "region": region,
+        "action_context": action_context,
+        "executive_summary": _build_executive_summary(account_map, access_report),
+        "executive_summary_cards": _build_executive_summary_cards(
+            account_map,
+            spend_baseline_context=spend_baseline_context,
+            coh_context=coh_context,
+            schedule_context=schedule_context,
+            comparison_context=comparison_context,
+        ),
+        "savings_by_lever": _build_savings_by_lever_context(
+            coh_context,
+            schedule_context,
+        ),
+        "spend_baseline_context": spend_baseline_context,
+        "account_map": {
+            "entries": account_map,
+            "prod": grouped["prod"],
+            "nonprod": grouped["nonprod"],
+            "unknown": grouped["unknown"],
+            "total": len(account_map),
+        },
+        "findings": [],
+        "recommendations": [],
+        "access_report": access_report,
+        "comparison_context": comparison_context,
+        "coh_context": coh_context,
+        "schedule_context": schedule_context,
+        "prerequisites_context": prerequisites_context,
+        "remediation_context": remediation_context,
+        "download_links": list(download_links or []),
+        "show_findings_section": False,
+        "show_recommendations_section": False,
     }
 
 
@@ -1024,6 +1140,7 @@ def render_dashboard_html(
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
     action_opportunities: Sequence[ActionOpportunity] | None = None,
     download_links: Sequence[dict[str, str]] | None = None,
+    appendix_href: str | None = None,
 ) -> str:
     """Render the dashboard HTML for account inventory."""
     environment = Environment(
@@ -1036,78 +1153,87 @@ def render_dashboard_html(
         else "report.html.j2"
     )
     template = environment.get_template(template_name)
-    grouped = _group_accounts(account_map)
-    recommendation_list = list(recommendations or [])
-    spend_baseline_context = _build_spend_baseline_context(
-        spend_baseline,
-        spend_baseline_error,
-    )
-    coh_context = _build_coh_context(coh_summary, account_map, recommendation_list)
-    schedule_context = _build_schedule_context(schedule_recommendations, account_map)
-    prerequisites_context = _build_prerequisites_context(access_report)
-    remediation_context = _build_remediation_context(
-        access_report,
-        has_coh_recommendations=bool(recommendation_list),
-    )
-    resolved_action_opportunities = (
-        list(action_opportunities)
-        if action_opportunities is not None
-        else build_action_opportunities(
-            account_map=account_map,
-            recommendations=recommendation_list,
-            schedule_recommendations=schedule_recommendations,
-        )
-    )
-    action_context = _build_action_context(
-        resolved_action_opportunities,
-        spend_baseline_context=spend_baseline_context,
-        comparison_context=comparison_context,
-    )
-
-    return template.render(
+    context = _build_dashboard_template_context(
         title=title,
         subtitle=subtitle,
+        account_map=account_map,
         report_mode=report_mode,
         stylesheet_path=stylesheet_path,
-        privacy_context=privacy_context or _default_privacy_context(),
-        generated_at=generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        privacy_context=privacy_context,
+        comparison_context=comparison_context,
+        generated_at=generated_at,
         client_id=client_id,
         run_id=run_id,
         account_id=account_id,
         region=region,
-        action_context=action_context,
-        executive_summary=_build_executive_summary(account_map, access_report),
-        executive_summary_cards=_build_executive_summary_cards(
-            account_map,
-            spend_baseline_context=spend_baseline_context,
-            coh_context=coh_context,
-            schedule_context=schedule_context,
-            comparison_context=comparison_context,
-        ),
-        savings_by_lever=_build_savings_by_lever_context(
-            coh_context,
-            schedule_context,
-        ),
-        spend_baseline_context=spend_baseline_context,
-        account_map={
-            "entries": account_map,
-            "prod": grouped["prod"],
-            "nonprod": grouped["nonprod"],
-            "unknown": grouped["unknown"],
-            "total": len(account_map),
-        },
-        findings=[],
-        recommendations=[],
         access_report=access_report,
-        comparison_context=comparison_context,
-        coh_context=coh_context,
-        schedule_context=schedule_context,
-        prerequisites_context=prerequisites_context,
-        remediation_context=remediation_context,
-        download_links=list(download_links or []),
-        show_findings_section=False,
-        show_recommendations_section=False,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=spend_baseline_error,
+        coh_summary=coh_summary,
+        recommendations=recommendations,
+        schedule_recommendations=schedule_recommendations,
+        action_opportunities=action_opportunities,
+        download_links=download_links,
     )
+    if report_mode == "lead_magnet":
+        context["appendix_href"] = appendix_href or "appendix.html"
+    return template.render(**context)
+
+
+def render_appendix_html(
+    account_map: list[AccountMapEntry],
+    *,
+    title: str = "FinOps Pack Dashboard",
+    subtitle: str = "AWS Organizations account inventory and environment classification.",
+    report_mode: str = "lead_magnet",
+    stylesheet_path: str | None = None,
+    privacy_context: dict[str, str] | None = None,
+    comparison_context: dict[str, Any] | None = None,
+    generated_at: str | None = None,
+    client_id: str | None = None,
+    run_id: str | None = None,
+    account_id: str | None = "AWS Organizations",
+    region: str = "us-east-1",
+    access_report: AccessReport | None = None,
+    spend_baseline: SpendBaseline | None = None,
+    spend_baseline_error: str | None = None,
+    coh_summary: dict[str, Any] | None = None,
+    recommendations: Sequence[NormalizedRecommendation] | None = None,
+    schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    action_opportunities: Sequence[ActionOpportunity] | None = None,
+    download_links: Sequence[dict[str, str]] | None = None,
+    dashboard_href: str | None = None,
+) -> str:
+    """Render the separate technical appendix HTML for lead-magnet reports."""
+    environment = Environment(
+        loader=FileSystemLoader(TEMPLATE_DIR),
+        autoescape=select_autoescape(["html", "xml"]),
+    )
+    template = environment.get_template("appendix.html.j2")
+    context = _build_dashboard_template_context(
+        title=title,
+        subtitle=subtitle,
+        account_map=account_map,
+        report_mode=report_mode,
+        stylesheet_path=stylesheet_path,
+        privacy_context=privacy_context,
+        comparison_context=comparison_context,
+        generated_at=generated_at,
+        client_id=client_id,
+        run_id=run_id,
+        account_id=account_id,
+        region=region,
+        access_report=access_report,
+        spend_baseline=spend_baseline,
+        spend_baseline_error=spend_baseline_error,
+        coh_summary=coh_summary,
+        recommendations=recommendations,
+        schedule_recommendations=schedule_recommendations,
+        action_opportunities=action_opportunities,
+        download_links=download_links,
+    )
+    context["dashboard_href"] = dashboard_href or "dashboard.html"
+    return template.render(**context)
 
 
 def write_dashboard(
@@ -1133,6 +1259,7 @@ def write_dashboard(
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
     action_opportunities: Sequence[ActionOpportunity] | None = None,
     download_links: Sequence[dict[str, str]] | None = None,
+    appendix_href: str | None = None,
 ) -> Path:
     """Write the account dashboard HTML and its stylesheet."""
     destination_path = Path(destination)
@@ -1159,6 +1286,67 @@ def write_dashboard(
             schedule_recommendations=schedule_recommendations,
             action_opportunities=action_opportunities,
             download_links=download_links,
+            appendix_href=appendix_href,
+        ),
+        encoding="utf-8",
+    )
+
+    stylesheet_path = destination_path.parent / "style.css"
+    shutil.copyfile(STATIC_DIR / "style.css", stylesheet_path)
+    return destination_path
+
+
+def write_appendix(
+    account_map: list[AccountMapEntry],
+    destination: str | Path,
+    *,
+    title: str = "FinOps Pack Dashboard",
+    subtitle: str = "AWS Organizations account inventory and environment classification.",
+    report_mode: str = "lead_magnet",
+    stylesheet_path: str | None = None,
+    privacy_context: dict[str, str] | None = None,
+    comparison_context: dict[str, Any] | None = None,
+    generated_at: str | None = None,
+    client_id: str | None = None,
+    run_id: str | None = None,
+    account_id: str | None = "AWS Organizations",
+    region: str = "us-east-1",
+    access_report: AccessReport | None = None,
+    spend_baseline: SpendBaseline | None = None,
+    spend_baseline_error: str | None = None,
+    coh_summary: dict[str, Any] | None = None,
+    recommendations: Sequence[NormalizedRecommendation] | None = None,
+    schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    action_opportunities: Sequence[ActionOpportunity] | None = None,
+    download_links: Sequence[dict[str, str]] | None = None,
+    dashboard_href: str | None = None,
+) -> Path:
+    """Write the lead-magnet appendix HTML and its shared stylesheet."""
+    destination_path = Path(destination)
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    destination_path.write_text(
+        render_appendix_html(
+            account_map,
+            title=title,
+            subtitle=subtitle,
+            report_mode=report_mode,
+            stylesheet_path=stylesheet_path,
+            privacy_context=privacy_context,
+            comparison_context=comparison_context,
+            generated_at=generated_at,
+            client_id=client_id,
+            run_id=run_id,
+            account_id=account_id,
+            region=region,
+            access_report=access_report,
+            spend_baseline=spend_baseline,
+            spend_baseline_error=spend_baseline_error,
+            coh_summary=coh_summary,
+            recommendations=recommendations,
+            schedule_recommendations=schedule_recommendations,
+            action_opportunities=action_opportunities,
+            download_links=download_links,
+            dashboard_href=dashboard_href,
         ),
         encoding="utf-8",
     )

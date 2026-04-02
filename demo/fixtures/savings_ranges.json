@@ -1,20 +1,38 @@
 [
   {
+    "monthly_low_usd": 16.0,
+    "monthly_high_usd": 16.0,
+    "annual_low_usd": 192.0,
+    "annual_high_usd": 192.0
+  },
+  {
+    "monthly_low_usd": 18.0,
+    "monthly_high_usd": 18.0,
+    "annual_low_usd": 216.0,
+    "annual_high_usd": 216.0
+  },
+  {
     "monthly_low_usd": 18.4,
     "monthly_high_usd": 18.4,
     "annual_low_usd": 220.8,
     "annual_high_usd": 220.8
   },
   {
-    "monthly_low_usd": 42.5,
-    "monthly_high_usd": 42.5,
-    "annual_low_usd": 510.0,
-    "annual_high_usd": 510.0
+    "monthly_low_usd": 49.5,
+    "monthly_high_usd": 49.5,
+    "annual_low_usd": 594.0,
+    "annual_high_usd": 594.0
   },
   {
-    "monthly_low_usd": 67.8,
-    "monthly_high_usd": 67.8,
-    "annual_low_usd": 813.6,
-    "annual_high_usd": 813.6
+    "monthly_low_usd": 72.3,
+    "monthly_high_usd": 72.3,
+    "annual_low_usd": 867.6,
+    "annual_high_usd": 867.6
+  },
+  {
+    "monthly_low_usd": 184.2,
+    "monthly_high_usd": 184.2,
+    "annual_low_usd": 2210.4,
+    "annual_high_usd": 2210.4
   }
 ]

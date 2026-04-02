@@ -1,6 +1,6 @@
 [
   {
-    "recommendation_id": "rec-rightsize-prod-core",
+    "recommendation_id": "rec-rightsize-prod-core-api",
     "source": "cost_optimization_hub",
     "category": "rightsizing / idle deletion",
     "account_id": "111111111111",
@@ -9,30 +9,67 @@
     "resource_arn": "arn:aws:ec2:us-east-1:111111111111:instance/i-0123456789abcdef0",
     "current_resource_type": "Ec2Instance",
     "recommended_resource_type": "Ec2Instance",
-    "current_resource_summary": "m5.large running at low utilization",
-    "recommended_resource_summary": "t3.large estimated to satisfy demand",
+    "current_resource_summary": "m5.2xlarge running at consistently low utilization",
+    "recommended_resource_summary": "m5.xlarge estimated to satisfy demand",
     "recommended_resource_details": {
       "ec2Instance": {
-        "instanceType": "t3.large"
+        "instanceType": "m5.xlarge"
       }
     },
     "action_type": "Rightsize",
     "currency_code": "USD",
-    "estimated_monthly_savings": 42.5,
-    "estimated_monthly_cost": 120.0,
-    "estimated_savings_percentage": 35.4,
+    "estimated_monthly_savings": 72.3,
+    "estimated_monthly_cost": 318.0,
+    "estimated_savings_percentage": 22.7,
     "recommendation": {
       "code": "coh-rightsize-ec2instance",
       "title": "Rightsize Ec2Instance",
-      "summary": "Current: m5.large running at low utilization. Recommended: t3.large estimated to satisfy demand.",
-      "action": "Rightsize the Ec2Instance. Target state: t3.large estimated to satisfy demand.",
+      "summary": "Current: m5.2xlarge running at consistently low utilization. Recommended: m5.xlarge estimated to satisfy demand.",
+      "action": "Rightsize the Ec2Instance. Target state: m5.xlarge estimated to satisfy demand.",
       "effort": "medium",
       "risk": "medium",
       "savings": {
-        "monthly_low_usd": 42.5,
-        "monthly_high_usd": 42.5,
-        "annual_low_usd": 510.0,
-        "annual_high_usd": 510.0
+        "monthly_low_usd": 72.3,
+        "monthly_high_usd": 72.3,
+        "annual_low_usd": 867.6,
+        "annual_high_usd": 867.6
+      }
+    }
+  },
+  {
+    "recommendation_id": "rec-rightsize-prod-jobs",
+    "source": "cost_optimization_hub",
+    "category": "rightsizing / idle deletion",
+    "account_id": "111111111111",
+    "region": "us-west-2",
+    "resource_id": "i-0123456789abcdeff",
+    "resource_arn": "arn:aws:ec2:us-west-2:111111111111:instance/i-0123456789abcdeff",
+    "current_resource_type": "Ec2Instance",
+    "recommended_resource_type": "Ec2Instance",
+    "current_resource_summary": "m5.xlarge sized above observed workload demand",
+    "recommended_resource_summary": "t3.xlarge estimated to satisfy demand",
+    "recommended_resource_details": {
+      "ec2Instance": {
+        "instanceType": "t3.xlarge"
+      }
+    },
+    "action_type": "Rightsize",
+    "currency_code": "USD",
+    "estimated_monthly_savings": 49.5,
+    "estimated_monthly_cost": 205.0,
+    "estimated_savings_percentage": 24.1,
+    "recommendation": {
+      "code": "coh-rightsize-ec2instance",
+      "title": "Rightsize Ec2Instance",
+      "summary": "Current: m5.xlarge sized above observed workload demand. Recommended: t3.xlarge estimated to satisfy demand.",
+      "action": "Rightsize the Ec2Instance. Target state: t3.xlarge estimated to satisfy demand.",
+      "effort": "medium",
+      "risk": "medium",
+      "savings": {
+        "monthly_low_usd": 49.5,
+        "monthly_high_usd": 49.5,
+        "annual_low_usd": 594.0,
+        "annual_high_usd": 594.0
       }
     }
   },
@@ -55,9 +92,9 @@
     },
     "action_type": "PurchaseSavingsPlans",
     "currency_code": "USD",
-    "estimated_monthly_savings": 67.8,
-    "estimated_monthly_cost": 240.0,
-    "estimated_savings_percentage": 28.2,
+    "estimated_monthly_savings": 184.2,
+    "estimated_monthly_cost": 812.0,
+    "estimated_savings_percentage": 22.7,
     "recommendation": {
       "code": "coh-purchasesavingsplans-ec2instancesavingsplans",
       "title": "PurchaseSavingsPlans Ec2InstanceSavingsPlans to ComputeSavingsPlans",
@@ -66,15 +103,15 @@
       "effort": "low",
       "risk": "low",
       "savings": {
-        "monthly_low_usd": 67.8,
-        "monthly_high_usd": 67.8,
-        "annual_low_usd": 813.6,
-        "annual_high_usd": 813.6
+        "monthly_low_usd": 184.2,
+        "monthly_high_usd": 184.2,
+        "annual_low_usd": 2210.4,
+        "annual_high_usd": 2210.4
       }
     }
   },
   {
-    "recommendation_id": "rec-delete-ebs-sandbox",
+    "recommendation_id": "rec-delete-ebs-sandbox-web",
     "source": "cost_optimization_hub",
     "category": "storage/network/etc.",
     "account_id": "222222222222",
@@ -93,13 +130,73 @@
       "title": "Delete EbsVolume",
       "summary": "Current: Unattached gp3 volume.",
       "action": "Delete the idle EbsVolume if it is no longer needed.",
-      "effort": "low",
-      "risk": "low",
+      "effort": "medium",
+      "risk": "medium",
       "savings": {
         "monthly_low_usd": 18.4,
         "monthly_high_usd": 18.4,
         "annual_low_usd": 220.8,
         "annual_high_usd": 220.8
+      }
+    }
+  },
+  {
+    "recommendation_id": "rec-gp2-gp3-analytics",
+    "source": "cost_optimization_hub",
+    "category": "storage/network/etc.",
+    "account_id": "444444444444",
+    "region": "us-west-2",
+    "resource_id": "vol-0def9876abc543210",
+    "resource_arn": "arn:aws:ec2:us-west-2:444444444444:volume/vol-0def9876abc543210",
+    "current_resource_type": "EbsVolume",
+    "current_resource_summary": "gp2 analytics volume with no special throughput needs",
+    "action_type": "Rightsize",
+    "currency_code": "USD",
+    "estimated_monthly_savings": 16.0,
+    "estimated_monthly_cost": 64.0,
+    "estimated_savings_percentage": 25.0,
+    "recommendation": {
+      "code": "coh-modify-ebsvolume",
+      "title": "Tune EbsVolume",
+      "summary": "Current: gp2 analytics volume with no special throughput needs.",
+      "action": "Move the EbsVolume to a lower-cost storage configuration.",
+      "effort": "medium",
+      "risk": "medium",
+      "savings": {
+        "monthly_low_usd": 16.0,
+        "monthly_high_usd": 16.0,
+        "annual_low_usd": 192.0,
+        "annual_high_usd": 192.0
+      }
+    }
+  },
+  {
+    "recommendation_id": "rec-delete-ebs-shared",
+    "source": "cost_optimization_hub",
+    "category": "storage/network/etc.",
+    "account_id": "333333333333",
+    "region": "us-east-1",
+    "resource_id": "vol-0123aaaabbbbccccd",
+    "resource_arn": "arn:aws:ec2:us-east-1:333333333333:volume/vol-0123aaaabbbbccccd",
+    "current_resource_type": "EbsVolume",
+    "current_resource_summary": "Detached snapshot staging volume",
+    "action_type": "Delete",
+    "currency_code": "USD",
+    "estimated_monthly_savings": 18.0,
+    "estimated_monthly_cost": 18.0,
+    "estimated_savings_percentage": 100.0,
+    "recommendation": {
+      "code": "coh-delete-ebsvolume",
+      "title": "Delete EbsVolume",
+      "summary": "Current: Detached snapshot staging volume.",
+      "action": "Delete the idle EbsVolume if it is no longer needed.",
+      "effort": "medium",
+      "risk": "medium",
+      "savings": {
+        "monthly_low_usd": 18.0,
+        "monthly_high_usd": 18.0,
+        "annual_low_usd": 216.0,
+        "annual_high_usd": 216.0
       }
     }
   }

@@ -15,7 +15,11 @@ from finops_pack.prerequisites import (
     CE_RESOURCE_LEVEL_DOC_NOTE,
     CE_RESOURCE_LEVEL_ENABLEMENT_GUIDANCE,
 )
-from finops_pack.render.dashboard import build_dashboard_download_links, render_dashboard_html
+from finops_pack.render.dashboard import (
+    build_dashboard_download_links,
+    render_appendix_html,
+    render_dashboard_html,
+)
 
 
 def _build_recommendation(
@@ -163,17 +167,20 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "Priority Actions" in html
     assert "Savings By Bucket" in html
     assert "Technical Appendix" in html
+    assert 'href="appendix.html"' in html
     assert "AWS COH findings are AWS-generated recommendations." in html
     assert "Stop 1 non-prod EC2 instance off-hours" in html
     assert "Buy 1 compute savings plan" in html
     assert "Clean up or tune 1 EBS volume" in html
     assert "prod-core" in html
     assert "sandbox-apps" in html
-    assert "Needs Review" in html
     assert "dev-batch" in html
     assert "prod-batch" not in html
     assert "AWS COH" in html
     assert "Native finops-pack" in html
+    assert "Privacy + Retention" not in html
+    assert "Access Report" not in html
+    assert "Needs Review" not in html
 
 
 def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
@@ -225,7 +232,7 @@ def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
 
 
 def test_render_dashboard_html_includes_prerequisites_and_remediation_steps() -> None:
-    html = render_dashboard_html(
+    html = render_appendix_html(
         [AccountMapEntry(account_id="111111111111", name="prod-core", environment="prod")],
         access_report=AccessReport(
             account_id="111111111111",
@@ -281,7 +288,7 @@ def test_render_dashboard_html_includes_prerequisites_and_remediation_steps() ->
 
 
 def test_render_dashboard_html_includes_download_links() -> None:
-    html = render_dashboard_html(
+    html = render_appendix_html(
         [AccountMapEntry(account_id="111111111111", name="prod-core", environment="prod")],
         title="FinOps Pack Dashboard - acme-prod",
         client_id="acme-prod",
@@ -315,10 +322,8 @@ def test_render_dashboard_html_includes_download_links() -> None:
     assert "Privacy + Retention" in html
     assert "acme-prod" in html
     assert "20260401T010203Z-test" in html
-    assert "Top 3 actions" in html
-    assert "+$12.50 / month" in html
     assert "Technical Appendix" in html
-    assert "AWS-verified monthly savings" in html
+    assert "Back to Dashboard" in html
     assert "Download Files" in html
     assert "Download All" in html
     assert "Accounts JSON" in html

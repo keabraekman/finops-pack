@@ -2,8 +2,8 @@
   "operation": "GetCostAndUsage",
   "request": {
     "TimePeriod": {
-      "Start": "2026-02-22",
-      "End": "2026-03-24"
+      "Start": "2026-03-02",
+      "End": "2026-04-01"
     },
     "Granularity": "MONTHLY",
     "Metrics": [
@@ -15,24 +15,24 @@
       "ResultsByTime": [
         {
           "TimePeriod": {
-            "Start": "2026-02-22",
-            "End": "2026-03-01"
+            "Start": "2026-03-02",
+            "End": "2026-03-16"
           },
           "Total": {
             "UnblendedCost": {
-              "Amount": "84.50",
+              "Amount": "2480.00",
               "Unit": "USD"
             }
           }
         },
         {
           "TimePeriod": {
-            "Start": "2026-03-01",
-            "End": "2026-03-24"
+            "Start": "2026-03-16",
+            "End": "2026-04-01"
           },
           "Total": {
             "UnblendedCost": {
-              "Amount": "115.50",
+              "Amount": "4000.00",
               "Unit": "USD"
             }
           }
@@ -43,24 +43,24 @@
   "resultsByTime": [
     {
       "TimePeriod": {
-        "Start": "2026-02-22",
-        "End": "2026-03-01"
+        "Start": "2026-03-02",
+        "End": "2026-03-16"
       },
       "Total": {
         "UnblendedCost": {
-          "Amount": "84.50",
+          "Amount": "2480.00",
           "Unit": "USD"
         }
       }
     },
     {
       "TimePeriod": {
-        "Start": "2026-03-01",
-        "End": "2026-03-24"
+        "Start": "2026-03-16",
+        "End": "2026-04-01"
       },
       "Total": {
         "UnblendedCost": {
-          "Amount": "115.50",
+          "Amount": "4000.00",
           "Unit": "USD"
         }
       }
@@ -68,7 +68,7 @@
   ],
   "bucketCount": 2,
   "windowDays": 30,
-  "totalAmount": 200.0,
-  "averageDailyAmount": 6.67,
+  "totalAmount": 6480.0,
+  "averageDailyAmount": 216.0,
   "unit": "USD"
 }

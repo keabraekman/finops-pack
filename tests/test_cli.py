@@ -586,6 +586,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert callable(publish_call["build_index_html"])
     uploaded_asset_names = {asset.object_name for asset in publish_call["assets"]}
     assert "style.css" in uploaded_asset_names
+    assert "appendix.html" in uploaded_asset_names
     assert "downloads/exports.csv" in uploaded_asset_names
     assert "downloads/exports.json" in uploaded_asset_names
     assert "downloads/exports.schema.json" in uploaded_asset_names
@@ -708,35 +709,47 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "2.07,2.95,2.95" in schedule_csv
     assert "estimated" in schedule_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
-    assert "Access Report" in dashboard_html
-    assert "Region Coverage" in dashboard_html
     assert "Top 3 actions" in dashboard_html
     assert "Priority Actions" in dashboard_html
     assert "Savings By Bucket" in dashboard_html
     assert "Technical Appendix" in dashboard_html
-    assert "Account Map" in dashboard_html
+    assert 'href="appendix.html"' in dashboard_html
     assert "FinOps Pack Dashboard - acme-prod" in dashboard_html
-    assert "20260401T010203Z-test" in dashboard_html
     assert "prod-core" in dashboard_html
     assert "Rightsize 1 EC2 instance" in dashboard_html
     assert "+$12.50 / month" in dashboard_html
-    assert "Download Files" in dashboard_html
-    assert "Privacy + Retention" in dashboard_html
+    assert "Download Files" not in dashboard_html
+    assert "Privacy + Retention" not in dashboard_html
+    assert "Access Report" not in dashboard_html
+
+    appendix_html = (tmp_path / "output" / "appendix.html").read_text(encoding="utf-8")
+    assert "Privacy + Retention" in appendix_html
+    assert "Download Files" in appendix_html
+    assert "Access Report" in appendix_html
+    assert "Region Coverage" in appendix_html
+    assert "Account Map" in appendix_html
+    assert "20260401T010203Z-test" in appendix_html
+    assert 'href="dashboard.html"' in appendix_html
 
     preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
     assert "FinOps Pack Dashboard - acme-prod" in preview_html
-    assert "Privacy + Retention" in preview_html
     assert "Priority Actions" in preview_html
-    assert "Download Files" in preview_html
-    assert 'href="report-bundle.zip"' in preview_html
-    assert 'href="downloads/accounts.json"' in preview_html
-    assert 'href="downloads/access_report.json"' in preview_html
-    assert 'href="downloads/exports.csv"' in preview_html
-    assert 'href="downloads/exports.json"' in preview_html
-    assert 'href="downloads/exports.schema.json"' in preview_html
-    assert 'href="summary.json"' in preview_html
-    assert 'href="schedule/schedule_recs.csv"' in preview_html
+    assert 'href="appendix.html"' in preview_html
+    assert "Privacy + Retention" not in preview_html
+    assert "Download Files" not in preview_html
     assert (tmp_path / "out" / "report-bundle.zip").exists()
+    preview_appendix_html = (tmp_path / "out" / "appendix.html").read_text(encoding="utf-8")
+    assert "Privacy + Retention" in preview_appendix_html
+    assert "Download Files" in preview_appendix_html
+    assert 'href="index.html"' in preview_appendix_html
+    assert 'href="report-bundle.zip"' in preview_appendix_html
+    assert 'href="downloads/accounts.json"' in preview_appendix_html
+    assert 'href="downloads/access_report.json"' in preview_appendix_html
+    assert 'href="downloads/exports.csv"' in preview_appendix_html
+    assert 'href="downloads/exports.json"' in preview_appendix_html
+    assert 'href="downloads/exports.schema.json"' in preview_appendix_html
+    assert 'href="summary.json"' in preview_appendix_html
+    assert 'href="schedule/schedule_recs.csv"' in preview_appendix_html
     assert (tmp_path / "out" / "downloads" / "accounts.json").exists()
     assert (tmp_path / "out" / "downloads" / "access_report.json").exists()
     assert (tmp_path / "out" / "downloads" / "exports.csv").exists()

@@ -27,33 +27,34 @@
     "nonprod": 2,
     "unknown": 1
   },
-  "findings": {
-    "total": 1
-  },
   "inventory": {
-    "ec2_instance_count": 2,
+    "ec2_instance_count": 3,
     "ec2_inventory_error_count": 0
   },
   "schedule_recommendations": {
-    "recommendation_count": 2,
-    "estimated_count": 2,
+    "recommendation_count": 3,
+    "estimated_count": 3,
     "needs_ce_resource_level_opt_in_count": 0
   },
   "ce": {
-    "spend_baseline_total": 200.0,
+    "spend_baseline_total": 6480.0,
     "spend_baseline_unit": "USD",
     "spend_baseline_bucket_count": 2,
     "resource_daily_collected": true,
     "resource_daily_time_period_count": 14,
-    "resource_daily_group_count": 2
+    "resource_daily_group_count": 3
   },
   "coh": {
     "summary_count": 3,
-    "recommendation_count": 3,
-    "normalized_recommendation_count": 3,
+    "recommendation_count": 6,
+    "normalized_recommendation_count": 6,
     "detail_error_count": 0,
-    "estimated_total_deduped_savings": 128.7,
-    "normalized_estimated_monthly_savings": 128.7
+    "estimated_total_deduped_savings": 358.4,
+    "normalized_estimated_monthly_savings": 358.4
+  },
+  "actions": {
+    "count": 4,
+    "total_monthly_savings": 1001.0
   },
   "access_report": {
     "check_count": 3,
@@ -64,10 +65,10 @@
   "comparison": {
     "previous_run_id": "20260331T010203Z-prev",
     "previous_label": "2026-03-31 01:02:03 UTC",
-    "savings_change_since_last_report": 12.5,
-    "normalized_recommendation_count_change": 1,
+    "savings_change_since_last_report": 86.2,
+    "normalized_recommendation_count_change": 2,
     "account_total_change": 0,
-    "savings_change_display": "+$12.50 / month",
-    "summary": "vs 2026-03-31 01:02:03 UTC · +1 recommendations · +0 accounts"
+    "savings_change_display": "+$86.20 / month",
+    "summary": "vs 2026-03-31 01:02:03 UTC · +2 recommendations · +0 accounts"
   }
 }
