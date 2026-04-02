@@ -712,7 +712,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Top 3 actions" in dashboard_html
     assert "Priority Actions" in dashboard_html
     assert "Savings By Bucket" in dashboard_html
-    assert "Technical Appendix" in dashboard_html
+    assert "View technical appendix" in dashboard_html
     assert 'href="appendix.html"' in dashboard_html
     assert "FinOps Pack Dashboard - acme-prod" in dashboard_html
     assert "prod-core" in dashboard_html
@@ -721,6 +721,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "Download Files" not in dashboard_html
     assert "Privacy + Retention" not in dashboard_html
     assert "Access Report" not in dashboard_html
+    assert dashboard_html.index("View technical appendix") > dashboard_html.index("Details")
 
     appendix_html = (tmp_path / "output" / "appendix.html").read_text(encoding="utf-8")
     assert "Privacy + Retention" in appendix_html
@@ -735,6 +736,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "FinOps Pack Dashboard - acme-prod" in preview_html
     assert "Priority Actions" in preview_html
     assert 'href="appendix.html"' in preview_html
+    assert "View technical appendix" in preview_html
     assert "Privacy + Retention" not in preview_html
     assert "Download Files" not in preview_html
     assert (tmp_path / "out" / "report-bundle.zip").exists()

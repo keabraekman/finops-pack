@@ -100,9 +100,6 @@
             <span class="meta-chip"><span class="meta-chip-label">Generated</span>{{ generated_at or "TBD" }}</span>
             <span class="meta-chip"><span class="meta-chip-label">Region</span>{{ region or "TBD" }}</span>
           </div>
-          {% if appendix_href %}
-            <a class="page-link page-link-quiet" href="{{ appendix_href }}">Technical Appendix</a>
-          {% endif %}
         </div>
       </section>
 
@@ -222,6 +219,14 @@
               </article>
             {% endfor %}
           </div>
+        </section>
+      {% endif %}
+
+      {% if appendix_href %}
+        <section class="section section-tight appendix-link-row">
+          <a class="page-link page-link-secondary" href="{{ appendix_href }}">
+            View technical appendix
+          </a>
         </section>
       {% endif %}
     </div>

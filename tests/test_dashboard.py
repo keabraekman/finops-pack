@@ -166,7 +166,7 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "$201.45" in html
     assert "Priority Actions" in html
     assert "Savings By Bucket" in html
-    assert "Technical Appendix" in html
+    assert "View technical appendix" in html
     assert 'href="appendix.html"' in html
     assert "AWS COH findings are AWS-generated recommendations." in html
     assert "Stop 1 non-prod EC2 instance off-hours" in html
@@ -181,6 +181,7 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     assert "Privacy + Retention" not in html
     assert "Access Report" not in html
     assert "Needs Review" not in html
+    assert html.index("View technical appendix") > html.index("Details")
 
 
 def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
