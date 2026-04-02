@@ -89,6 +89,56 @@
         </section>
       {% endif %}
 
+      {% if appendix_action_sections %}
+        <section class="section section-tight">
+          <h2>Savings Evidence</h2>
+          <div class="stack">
+            {% for section in appendix_action_sections %}
+              <article class="card">
+                <div class="card-header">
+                  <div>
+                    <h3>{{ section.lever_label }}</h3>
+                    <p class="section-note">{{ section.bucket }} · {{ section.resource_count }} resources · {{ section.account_count }} accounts</p>
+                  </div>
+                  <div class="bucket-totals">
+                    <span class="bucket-savings">{{ section.monthly_savings_display }} / month</span>
+                  </div>
+                </div>
+
+                <div class="module-list">
+                  {% for action in section.actions %}
+                    <div class="module-item">
+                      <div class="module-heading">
+                        <span>{{ action.action_label }}</span>
+                        <span class="badge badge-low">{{ action.source_label }}</span>
+                      </div>
+                      <p class="status-note"><strong>Savings:</strong> {{ action.monthly_savings_display }}</p>
+                      <p class="status-note"><strong>Risk / effort / confidence:</strong> {{ action.risk_label }} / {{ action.effort_label }} / {{ action.confidence_label }}</p>
+                      <p class="status-note"><strong>Why this matters:</strong> {{ action.why_it_matters }}</p>
+                      <p class="status-note"><strong>What to do first:</strong> {{ action.what_to_do_first }}</p>
+                      <p class="status-note"><strong>Evidence:</strong> {{ action.evidence_summary }}</p>
+                      {% if action.supporting_items %}
+                        <div class="supporting-items">
+                          {% for item in action.supporting_items %}
+                            <div class="supporting-item">
+                              <div class="table-primary">{{ item.resource_name or item.resource_id }}</div>
+                              <div class="table-secondary">{{ item.account_name }} · {{ item.region }} · {{ item.monthly_savings_display }}</div>
+                              {% if item.detail %}
+                                <div class="table-secondary">{{ item.detail }}</div>
+                              {% endif %}
+                            </div>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
       {% if prerequisites_context %}
         <section class="section section-tight">
           <h2>Prerequisites</h2>

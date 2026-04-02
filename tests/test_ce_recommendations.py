@@ -53,9 +53,7 @@ def test_collect_savings_plans_purchase_recommendations_starts_and_fetches_detai
     client.get_savings_plans_purchase_recommendation.return_value = {
         "Metadata": {"RecommendationId": "sp-rec-1"},
         "SavingsPlansPurchaseRecommendation": {
-            "SavingsPlansPurchaseRecommendationDetails": [
-                {"RecommendationDetailId": "detail-1"}
-            ]
+            "SavingsPlansPurchaseRecommendationDetails": [{"RecommendationDetailId": "detail-1"}]
         },
     }
     client.get_savings_plan_purchase_recommendation_details.return_value = {

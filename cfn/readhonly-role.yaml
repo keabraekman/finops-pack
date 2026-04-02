@@ -45,9 +45,20 @@ Resources:
             Effect: Allow
             Action:
               - ec2:DescribeInstances
+              - ec2:DescribeNatGateways
               - ec2:DescribeVolumes
+              - ecs:DescribeServices
+              - ecs:DescribeTaskDefinition
+              - ecs:ListClusters
+              - ecs:ListServices
+              - lambda:ListFunctions
+              - cloudwatch:GetMetricStatistics
               - organizations:ListAccounts
+              - rds:DescribeDBClusters
               - rds:DescribeDBInstances
+              - s3:GetBucketLocation
+              - s3:GetLifecycleConfiguration
+              - s3:ListAllMyBuckets
             Resource: "*"
 
   FinOpsPackCostReadPolicy:

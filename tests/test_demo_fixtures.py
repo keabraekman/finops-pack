@@ -144,16 +144,13 @@ def test_load_demo_fixture_bundle_supports_scrubbed_output_fixtures(tmp_path: Pa
                     "region": "us-east-1",
                     "resource_id": "i-1234567890abcdef0",
                     "resource_arn": (
-                        "arn:aws:ec2:us-east-1:111111111111:instance/"
-                        "i-1234567890abcdef0"
+                        "arn:aws:ec2:us-east-1:111111111111:instance/i-1234567890abcdef0"
                     ),
                     "current_resource_type": "Ec2Instance",
                     "recommended_resource_type": "Ec2Instance",
                     "current_resource_summary": "m5.large",
                     "recommended_resource_summary": "t3.large",
-                    "recommended_resource_details": {
-                        "ec2Instance": {"instanceType": "t3.large"}
-                    },
+                    "recommended_resource_details": {"ec2Instance": {"instanceType": "t3.large"}},
                     "action_type": "Rightsize",
                     "currency_code": "USD",
                     "estimated_monthly_savings": 42.5,
@@ -187,8 +184,7 @@ def test_load_demo_fixture_bundle_supports_scrubbed_output_fixtures(tmp_path: Pa
                     "region": "us-east-1",
                     "instanceId": "i-1234567890abcdef0",
                     "instanceArn": (
-                        "arn:aws:ec2:us-east-1:111111111111:instance/"
-                        "i-1234567890abcdef0"
+                        "arn:aws:ec2:us-east-1:111111111111:instance/i-1234567890abcdef0"
                     ),
                     "name": "prod-core-web",
                     "state": "running",

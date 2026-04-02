@@ -9,6 +9,7 @@ from finops_pack import (
 from finops_pack.models import (
     AccessCheck,
     AccessReport,
+    ActionOpportunity,
     DailyCostPoint,
     ModuleStatus,
     RegionCoverage,
@@ -179,3 +180,20 @@ def test_resource_cost_series_model_can_be_created() -> None:
     assert series.identifier == "i-1234567890abcdef0"
     assert series.total_amount == 7.3
     assert len(series.daily_costs) == 2
+
+
+def test_action_opportunity_model_can_be_created() -> None:
+    action = ActionOpportunity(
+        bucket="Stop waste",
+        lever_key="nonprod_schedule",
+        action_label="Stop 1 non-prod EC2 instance off-hours",
+        monthly_savings=42.5,
+        source_label="Native finops-pack",
+        resource_count=1,
+        account_count=1,
+    )
+
+    assert action.lever_key == "nonprod_schedule"
+    assert action.resource_count == 1
+    assert action.account_count == 1
+    assert action.action_id is not None

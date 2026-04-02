@@ -329,6 +329,50 @@ def test_handle_run_enables_cost_optimization_hub(
             "errors": [],
         }
     )
+    collect_ecs_inventory = Mock(
+        return_value={
+            "operation": "DescribeServices",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
+    collect_nat_gateway_inventory = Mock(
+        return_value={
+            "operation": "DescribeNatGateways",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
+    collect_lambda_inventory = Mock(
+        return_value={
+            "operation": "ListFunctions",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
+    collect_s3_inventory = Mock(
+        return_value={
+            "operation": "ListBuckets",
+            "regions": ["global"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
     build_schedule_recommendation_rows = Mock(
         return_value=[
             {
@@ -482,6 +526,10 @@ def test_handle_run_enables_cost_optimization_hub(
     monkeypatch.setattr(cli, "collect_ec2_inventory", collect_ec2_inventory)
     monkeypatch.setattr(cli, "collect_ebs_inventory", collect_ebs_inventory)
     monkeypatch.setattr(cli, "collect_rds_inventory", collect_rds_inventory)
+    monkeypatch.setattr(cli, "collect_ecs_inventory", collect_ecs_inventory)
+    monkeypatch.setattr(cli, "collect_nat_gateway_inventory", collect_nat_gateway_inventory)
+    monkeypatch.setattr(cli, "collect_lambda_inventory", collect_lambda_inventory)
+    monkeypatch.setattr(cli, "collect_s3_inventory", collect_s3_inventory)
     monkeypatch.setattr(
         cli,
         "build_schedule_recommendation_rows",

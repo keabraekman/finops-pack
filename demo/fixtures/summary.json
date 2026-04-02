@@ -29,6 +29,12 @@
   },
   "inventory": {
     "ec2_instance_count": 3,
+    "ebs_volume_count": 3,
+    "rds_instance_count": 2,
+    "ecs_service_count": 1,
+    "nat_gateway_count": 1,
+    "lambda_function_count": 2,
+    "s3_bucket_count": 4,
     "ec2_inventory_error_count": 0
   },
   "schedule_recommendations": {
@@ -46,15 +52,15 @@
   },
   "coh": {
     "summary_count": 3,
-    "recommendation_count": 6,
-    "normalized_recommendation_count": 6,
+    "recommendation_count": 7,
+    "normalized_recommendation_count": 7,
     "detail_error_count": 0,
-    "estimated_total_deduped_savings": 358.4,
-    "normalized_estimated_monthly_savings": 358.4
+    "estimated_total_deduped_savings": 565.3,
+    "normalized_estimated_monthly_savings": 565.3
   },
   "actions": {
-    "count": 4,
-    "total_monthly_savings": 1001.0
+    "count": 12,
+    "total_monthly_savings": 1512.35
   },
   "access_report": {
     "check_count": 3,

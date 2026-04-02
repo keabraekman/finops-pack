@@ -1,0 +1,261 @@
+[
+  {
+    "bucket": "Stop waste",
+    "lever_key": "rds_nonprod_schedule",
+    "action_label": "Stop 2 non-prod RDS instances off-hours",
+    "monthly_savings": 128.0,
+    "risk": "medium",
+    "effort": "low",
+    "confidence": "medium",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "Non-production databases often keep running all month even though teams only use them during working hours.",
+    "what_to_do_first": "Validate stop/start compatibility on one dev database before applying the schedule broadly.",
+    "evidence_summary": "2 stoppable non-prod DB instances across 2 non-prod accounts based on standalone single-AZ guardrails.",
+    "opportunity_count": 2,
+    "resource_count": 2,
+    "account_count": 2,
+    "account_names": [
+      "sandbox-apps",
+      "nonprod-analytics"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "sandbox-apps",
+        "account_id": "222222222222",
+        "region": "us-east-1",
+        "resource_name": "sandbox-dev-db",
+        "resource_id": "sandbox-dev-db",
+        "detail": "db.t4g.medium · postgres",
+        "monthly_savings": 74.0
+      },
+      {
+        "account_name": "nonprod-analytics",
+        "account_id": "444444444444",
+        "region": "us-west-2",
+        "resource_name": "analytics-stage-db",
+        "resource_id": "analytics-stage-db",
+        "detail": "db.r6g.large · mysql",
+        "monthly_savings": 54.0
+      }
+    ]
+  },
+  {
+    "bucket": "Stop waste",
+    "lever_key": "nat_gateway_cleanup",
+    "action_label": "Delete 1 low-value NAT gateway",
+    "monthly_savings": 32.85,
+    "risk": "medium",
+    "effort": "medium",
+    "confidence": "medium",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "NAT gateways keep charging an hourly rate even when recent traffic is minimal.",
+    "what_to_do_first": "Confirm the route tables and endpoint requirements before removing the gateway.",
+    "evidence_summary": "1 NAT gateway showed low traffic over the recent CloudWatch window.",
+    "opportunity_count": 1,
+    "resource_count": 1,
+    "account_count": 1,
+    "account_names": [
+      "shared-services"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "nat-0demo111122223333",
+        "resource_id": "nat-0demo111122223333",
+        "detail": "VPC vpc-0demo1 · ~1.40 GiB over 14d",
+        "monthly_savings": 32.85
+      }
+    ]
+  },
+  {
+    "bucket": "Storage cleanup",
+    "lever_key": "ebs_cleanup_tuning",
+    "action_label": "Clean up or tune 3 EBS volumes",
+    "monthly_savings": 52.4,
+    "risk": "low",
+    "effort": "low",
+    "confidence": "high",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "Unattached or over-provisioned EBS volumes create steady storage waste every month.",
+    "what_to_do_first": "Snapshot any important data and test one gp2 to gp3 change before deleting or tuning the rest.",
+    "evidence_summary": "3 EBS volumes matched native orphaned, gp2 to gp3, or overprovisioned gp3 heuristics.",
+    "opportunity_count": 3,
+    "resource_count": 3,
+    "account_count": 3,
+    "account_names": [
+      "sandbox-apps",
+      "shared-services",
+      "nonprod-analytics"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "sandbox-apps",
+        "account_id": "222222222222",
+        "region": "us-east-1",
+        "resource_name": "sandbox-orphaned-logs",
+        "resource_id": "vol-0abc1234def567890",
+        "detail": "200 GiB gp3 unattached volume",
+        "monthly_savings": 18.4
+      },
+      {
+        "account_name": "nonprod-analytics",
+        "account_id": "444444444444",
+        "region": "us-west-2",
+        "resource_name": "analytics-gp2-cache",
+        "resource_id": "vol-0def9876abc543210",
+        "detail": "800 GiB gp2 -> gp3",
+        "monthly_savings": 16.0
+      },
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "shared-detached-stage",
+        "resource_id": "vol-0123aaaabbbbccccd",
+        "detail": "gp3 provisioned above baseline",
+        "monthly_savings": 18.0
+      }
+    ]
+  },
+  {
+    "bucket": "Rightsize",
+    "lever_key": "lambda_memory_rightsizing",
+    "action_label": "Rightsize 2 Lambda functions",
+    "monthly_savings": 27.8,
+    "risk": "low",
+    "effort": "low",
+    "confidence": "medium",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "Over-allocated Lambda memory raises the cost of every invocation even when functions rarely need it.",
+    "what_to_do_first": "Lower memory on one lower-risk function and validate latency before applying the same step elsewhere.",
+    "evidence_summary": "2 Lambda functions had enough stable traffic and headroom to support a one-step memory reduction.",
+    "opportunity_count": 2,
+    "resource_count": 2,
+    "account_count": 2,
+    "account_names": [
+      "prod-core",
+      "shared-services"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "prod-core",
+        "account_id": "111111111111",
+        "region": "us-east-1",
+        "resource_name": "invoice-pdf-worker",
+        "resource_id": "arn:aws:lambda:us-east-1:111111111111:function:invoice-pdf-worker",
+        "detail": "1024 MB -> 512 MB",
+        "monthly_savings": 15.6
+      },
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "event-normalizer",
+        "resource_id": "arn:aws:lambda:us-east-1:333333333333:function:event-normalizer",
+        "detail": "1536 MB -> 1024 MB",
+        "monthly_savings": 12.2
+      }
+    ]
+  },
+  {
+    "bucket": "Storage cleanup",
+    "lever_key": "rds_aurora_storage_tuning",
+    "action_label": "Tune 2 RDS or Aurora storage configurations",
+    "monthly_savings": 38.5,
+    "risk": "low",
+    "effort": "medium",
+    "confidence": "medium",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "Database storage classes and provisioned profiles can often be tuned down without changing workload behavior.",
+    "what_to_do_first": "Review storage class, free space, and performance needs before moving one lower-risk database to a cheaper storage profile.",
+    "evidence_summary": "2 RDS or Aurora storage candidates cleared conservative tuning rules.",
+    "opportunity_count": 2,
+    "resource_count": 2,
+    "account_count": 2,
+    "account_names": [
+      "prod-core",
+      "shared-services"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "prod-core",
+        "account_id": "111111111111",
+        "region": "us-east-1",
+        "resource_name": "customer-db",
+        "resource_id": "customer-db",
+        "detail": "1200 GiB gp2 -> gp3",
+        "monthly_savings": 24.0
+      },
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "events-aurora-cluster",
+        "resource_id": "events-aurora-cluster",
+        "detail": "Aurora I/O-optimized profile review",
+        "monthly_savings": 14.5
+      }
+    ]
+  },
+  {
+    "bucket": "Storage cleanup",
+    "lever_key": "s3_lifecycle_storage_class",
+    "action_label": "Apply S3 lifecycle rules to 4 buckets",
+    "monthly_savings": 24.9,
+    "risk": "low",
+    "effort": "medium",
+    "confidence": "medium",
+    "source_label": "Native finops-pack",
+    "why_it_matters": "Buckets without lifecycle rules often keep standard storage longer than the data really needs it.",
+    "what_to_do_first": "Start with one bucket, add a conservative lifecycle transition rule, and confirm retention expectations with the owner.",
+    "evidence_summary": "4 buckets had enough standard storage and no lifecycle rules, using a conservative cold-data eligibility assumption.",
+    "opportunity_count": 4,
+    "resource_count": 4,
+    "account_count": 3,
+    "account_names": [
+      "prod-core",
+      "sandbox-apps",
+      "shared-services"
+    ],
+    "supporting_items": [
+      {
+        "account_name": "prod-core",
+        "account_id": "111111111111",
+        "region": "us-east-1",
+        "resource_name": "prod-logs-archive",
+        "resource_id": "prod-logs-archive",
+        "detail": "~650 GiB standard storage · no lifecycle rules",
+        "monthly_savings": 8.1
+      },
+      {
+        "account_name": "sandbox-apps",
+        "account_id": "222222222222",
+        "region": "us-east-1",
+        "resource_name": "sandbox-build-artifacts",
+        "resource_id": "sandbox-build-artifacts",
+        "detail": "~540 GiB standard storage · no lifecycle rules",
+        "monthly_savings": 6.7
+      },
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "shared-app-exports",
+        "resource_id": "shared-app-exports",
+        "detail": "~430 GiB standard storage · no lifecycle rules",
+        "monthly_savings": 5.4
+      },
+      {
+        "account_name": "shared-services",
+        "account_id": "333333333333",
+        "region": "us-east-1",
+        "resource_name": "ml-feature-snapshots",
+        "resource_id": "ml-feature-snapshots",
+        "detail": "~380 GiB standard storage · no lifecycle rules",
+        "monthly_savings": 4.7
+      }
+    ]
+  }
+]

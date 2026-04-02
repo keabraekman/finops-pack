@@ -60,4 +60,3 @@ def test_build_native_ebs_actions_detects_cleanup_and_tuning_opportunities() -> 
     assert actions[1].monthly_savings == 2.0
     assert actions[2].monthly_savings == 20.0
     assert actions[0].source_label == "Native finops-pack"
-

@@ -26,7 +26,13 @@ def test_generate_policy_full_adds_optional_permissions() -> None:
     full_actions = _collect_actions(generate_policy("full"))
 
     assert "ec2:DescribeInstances" in min_actions
+    assert "ec2:DescribeNatGateways" in min_actions
+    assert "ecs:ListClusters" in min_actions
+    assert "lambda:ListFunctions" in min_actions
+    assert "cloudwatch:GetMetricStatistics" in min_actions
     assert "organizations:ListAccounts" in min_actions
+    assert "rds:DescribeDBClusters" in min_actions
+    assert "s3:ListAllMyBuckets" in min_actions
     assert "ce:GetCostAndUsage" in min_actions
     assert "ce:GetCostAndUsageWithResources" in min_actions
     assert "cost-optimization-hub:GetRecommendation" in min_actions

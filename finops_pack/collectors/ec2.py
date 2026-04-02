@@ -10,6 +10,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.collectors.cloudwatch import collect_single_stat_metric
 from finops_pack.models import AccountRecord
 
 ROLE_ARN_PATTERN = re.compile(
@@ -131,6 +132,25 @@ def _collect_region_instances(
                         partition=partition,
                     )
                     if normalized is not None:
+                        if normalized.get("state") == "running":
+                            instance_id = normalized["instanceId"]
+                            dimensions = [{"Name": "InstanceId", "Value": instance_id}]
+                            normalized["avgCpuUtilization14d"] = collect_single_stat_metric(
+                                session,
+                                region_name=region_name,
+                                namespace="AWS/EC2",
+                                metric_name="CPUUtilization",
+                                dimensions=dimensions,
+                                statistic="Average",
+                            )
+                            normalized["maxCpuUtilization14d"] = collect_single_stat_metric(
+                                session,
+                                region_name=region_name,
+                                namespace="AWS/EC2",
+                                metric_name="CPUUtilization",
+                                dimensions=dimensions,
+                                statistic="Maximum",
+                            )
                         collected.append(normalized)
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(

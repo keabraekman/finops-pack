@@ -70,11 +70,11 @@
           </div>
           {% if action_context.top_actions %}
             <div class="top-actions">
-              {% for action in action_context.top_actions %}
+                  {% for action in action_context.top_actions %}
                 <article class="top-action-item">
                   <div>
                     <div class="table-primary">{{ action.action_label }}</div>
-                    <div class="table-secondary">{{ action.source_label }} · {{ action.bucket }}</div>
+                    <div class="table-secondary">{{ action.source_label }} · {{ action.lever_label }}</div>
                   </div>
                   <div class="top-action-savings">{{ action.monthly_savings_display }}</div>
                 </article>
@@ -127,7 +127,7 @@
                       <td class="numeric-cell">{{ action.priority }}</td>
                       <td>
                         <div class="table-primary">{{ action.action_label }}</div>
-                        <div class="table-secondary">{{ action.bucket }}</div>
+                        <div class="table-secondary">{{ action.lever_label }} · {{ action.bucket }}</div>
                       </td>
                       <td class="numeric-cell">{{ action.monthly_savings_display }}</td>
                       <td><span class="badge badge-{{ action.risk }}">{{ action.risk_label }}</span></td>
@@ -186,7 +186,7 @@
                       <div class="detail-card-header">
                         <div>
                           <div class="table-primary">{{ action.action_label }}</div>
-                          <div class="table-secondary">{{ action.source_label }} · {{ action.source_trust_note }} · confidence {{ action.confidence_label }}</div>
+                          <div class="table-secondary">{{ action.source_label }} · {{ action.lever_label }} · {{ action.source_trust_note }} · confidence {{ action.confidence_label }}</div>
                         </div>
                         <div class="detail-card-savings">{{ action.monthly_savings_display }}</div>
                       </div>
@@ -199,6 +199,7 @@
                       <p class="status-note"><strong>Why this matters:</strong> {{ action.why_it_matters }}</p>
                       <p class="status-note"><strong>What to do first:</strong> {{ action.what_to_do_first }}</p>
                       <p class="status-note"><strong>Evidence:</strong> {{ action.evidence_summary }}</p>
+                      <p class="status-note"><strong>Scope:</strong> {{ action.resource_count }} resources across {{ action.account_count }} accounts.</p>
 
                       {% if action.supporting_items %}
                         <div class="supporting-items">

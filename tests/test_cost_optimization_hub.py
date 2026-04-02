@@ -249,8 +249,7 @@ def test_normalize_recommendation_maps_commitment_category() -> None:
     assert normalized.recommendation.savings.monthly_low_usd == 32.5
     assert normalized.recommended_resource_details is not None
     assert (
-        normalized.recommended_resource_details["computeSavingsPlans"]["termLength"]
-        == "ONE_YEAR"
+        normalized.recommended_resource_details["computeSavingsPlans"]["termLength"] == "ONE_YEAR"
     )
 
 

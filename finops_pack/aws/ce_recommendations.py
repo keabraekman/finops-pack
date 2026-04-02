@@ -174,8 +174,7 @@ def collect_savings_plans_purchase_recommendations(
     except (ClientError, BotoCoreError) as exc:
         start_prefix = f" StartGeneration={start_error}." if start_error else ""
         raise RuntimeError(
-            "Failed to collect CE Savings Plans purchase recommendations:"
-            f" {exc}.{start_prefix}"
+            f"Failed to collect CE Savings Plans purchase recommendations: {exc}.{start_prefix}"
         ) from exc
 
     for recommendation in flattened[:detail_limit]:

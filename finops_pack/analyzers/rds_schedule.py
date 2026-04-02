@@ -4,49 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from finops_pack.analyzers.pricing import MONTHLY_HOURS, estimate_rds_hourly_cost
 from finops_pack.analyzers.schedule_recommendations import calculate_off_hours_ratio
 from finops_pack.config import ScheduleConfig
 from finops_pack.models import AccountMapEntry, ActionOpportunity
-
-SIZE_UNIT_MAP = {
-    "micro": 0.25,
-    "small": 0.5,
-    "medium": 1.0,
-    "large": 2.0,
-    "xlarge": 4.0,
-    "2xlarge": 8.0,
-    "4xlarge": 16.0,
-    "8xlarge": 32.0,
-    "12xlarge": 48.0,
-    "16xlarge": 64.0,
-    "24xlarge": 96.0,
-    "32xlarge": 128.0,
-}
-FAMILY_MULTIPLIER = {
-    "t": 0.5,
-    "m": 1.0,
-    "r": 1.3,
-    "x": 1.6,
-    "i": 1.4,
-    "z": 1.5,
-}
-BASE_HOURLY_RATE = 0.08
-MONTHLY_HOURS = 730
-
-
-def _estimate_hourly_instance_cost(db_instance_class: str) -> tuple[float, str]:
-    """Estimate hourly RDS compute cost from the instance class shape."""
-    normalized = db_instance_class.removeprefix("db.")
-    family, _, size = normalized.partition(".")
-    family_prefix = family[:1].lower() if family else ""
-    size_units = SIZE_UNIT_MAP.get(size.lower(), 2.0 if size else 2.0)
-    multiplier = FAMILY_MULTIPLIER.get(family_prefix, 1.0)
-    confidence = (
-        "high"
-        if family_prefix in FAMILY_MULTIPLIER and size.lower() in SIZE_UNIT_MAP
-        else "medium"
-    )
-    return round(BASE_HOURLY_RATE * size_units * multiplier, 4), confidence
 
 
 def _is_stoppable_nonprod_db(
@@ -63,8 +24,7 @@ def _is_stoppable_nonprod_db(
     if engine.startswith("aurora"):
         return (
             False,
-            "Excluded because Aurora clusters are not handled by the native "
-            "stop/start path.",
+            "Excluded because Aurora clusters are not handled by the native stop/start path.",
         )
 
     status = str(item.get("status") or "").lower()
@@ -117,7 +77,7 @@ def build_rds_schedule_actions(
             continue
 
         db_instance_class = str(raw_item.get("dbInstanceClass") or "")
-        hourly_cost_estimate, confidence = _estimate_hourly_instance_cost(db_instance_class)
+        hourly_cost_estimate, confidence = estimate_rds_hourly_cost(db_instance_class)
         confidence_levels.add(confidence)
         monthly_savings = round(hourly_cost_estimate * MONTHLY_HOURS * off_hours_ratio, 2)
         account_name = str(raw_item.get("accountName") or raw_item.get("accountId") or "Unknown")
@@ -151,6 +111,7 @@ def build_rds_schedule_actions(
     return [
         ActionOpportunity(
             bucket="Stop waste",
+            lever_key="rds_nonprod_schedule",
             action_label=(
                 f"Stop {len(candidates)} non-prod RDS "
                 f"{'instance' if len(candidates) == 1 else 'instances'} off-hours"
@@ -177,6 +138,8 @@ def build_rds_schedule_actions(
                 "estimated from DB class heuristics and configured off-hours."
             ),
             opportunity_count=len(candidates),
+            resource_count=len(candidates),
+            account_count=len({item["account_id"] for item in candidates}),
             account_names=sorted({item["account_name"] for item in candidates}),
             supporting_items=[
                 {

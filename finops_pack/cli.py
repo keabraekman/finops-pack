@@ -14,8 +14,15 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.analyzers.action_opportunities import build_action_opportunities
+from finops_pack.analyzers.commitments import build_commitment_actions
+from finops_pack.analyzers.ec2_compute import build_ec2_compute_actions
+from finops_pack.analyzers.ecs_fargate import build_ecs_fargate_actions
+from finops_pack.analyzers.lambda_memory import build_lambda_memory_actions
+from finops_pack.analyzers.nat_gateways import build_nat_gateway_actions
 from finops_pack.analyzers.native_ebs import build_native_ebs_actions
+from finops_pack.analyzers.rds_optimization import build_rds_optimization_actions
 from finops_pack.analyzers.rds_schedule import build_rds_schedule_actions
+from finops_pack.analyzers.s3_storage import build_s3_storage_actions
 from finops_pack.analyzers.schedule_recommendations import (
     ESTIMATED_STATUS,
     NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS,
@@ -46,8 +53,12 @@ from finops_pack.aws.cost_optimization_hub import (
 )
 from finops_pack.collectors.ebs import collect_ebs_inventory
 from finops_pack.collectors.ec2 import collect_ec2_inventory
+from finops_pack.collectors.ecs import collect_ecs_inventory
+from finops_pack.collectors.lambda_functions import collect_lambda_inventory
+from finops_pack.collectors.nat_gateways import collect_nat_gateway_inventory
 from finops_pack.collectors.organizations import list_accounts
 from finops_pack.collectors.rds import collect_rds_inventory
+from finops_pack.collectors.s3 import collect_s3_inventory
 from finops_pack.config import ScheduleConfig, load_config, merge_run_config, resolve_regions
 from finops_pack.demo_fixtures import load_demo_fixture_bundle
 from finops_pack.export_schema import write_export_recommendations_schema
@@ -760,6 +771,146 @@ def _print_rds_inventory_summary(inventory_path: Path, inventory_snapshot: dict[
     print(f"rds_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
 
 
+def _collect_ecs_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort ECS inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "ecs_inventory.json"
+    inventory_snapshot = collect_ecs_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_ecs_inventory_summary(inventory_path: Path, inventory_snapshot: dict[str, Any]) -> None:
+    """Emit ECS inventory output details to stdout."""
+    print(f"ecs_inventory_path={inventory_path}")
+    print(f"ecs_inventory_service_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"ecs_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
+def _collect_nat_gateway_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort NAT Gateway inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "nat_gateways.json"
+    inventory_snapshot = collect_nat_gateway_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_nat_gateway_inventory_summary(
+    inventory_path: Path,
+    inventory_snapshot: dict[str, Any],
+) -> None:
+    """Emit NAT Gateway inventory output details to stdout."""
+    print(f"nat_gateway_inventory_path={inventory_path}")
+    print(f"nat_gateway_inventory_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"nat_gateway_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
+def _collect_lambda_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort Lambda inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "lambda_functions.json"
+    inventory_snapshot = collect_lambda_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_lambda_inventory_summary(
+    inventory_path: Path,
+    inventory_snapshot: dict[str, Any],
+) -> None:
+    """Emit Lambda inventory output details to stdout."""
+    print(f"lambda_inventory_path={inventory_path}")
+    print(f"lambda_inventory_function_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"lambda_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
+def _collect_s3_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort S3 inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "s3_buckets.json"
+    inventory_snapshot = collect_s3_inventory(
+        session,
+        account_records=account_records,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_s3_inventory_summary(inventory_path: Path, inventory_snapshot: dict[str, Any]) -> None:
+    """Emit S3 inventory output details to stdout."""
+    print(f"s3_inventory_path={inventory_path}")
+    print(f"s3_inventory_bucket_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"s3_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
 def _merge_module_collection_status(
     access_report: AccessReport,
     *,
@@ -1181,6 +1332,10 @@ def _build_summary_payload(
     ec2_inventory_snapshot: dict[str, Any] | None = None,
     ebs_inventory_snapshot: dict[str, Any] | None = None,
     rds_inventory_snapshot: dict[str, Any] | None = None,
+    ecs_inventory_snapshot: dict[str, Any] | None = None,
+    nat_gateway_inventory_snapshot: dict[str, Any] | None = None,
+    lambda_inventory_snapshot: dict[str, Any] | None = None,
+    s3_inventory_snapshot: dict[str, Any] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
     ce_rightsizing_snapshot: dict[str, Any] | None = None,
     ce_savings_plan_snapshot: dict[str, Any] | None = None,
@@ -1217,6 +1372,7 @@ def _build_summary_payload(
         sum(item.monthly_savings for item in action_opportunity_list),
         2,
     )
+    lever_keys = sorted({item.lever_key for item in action_opportunity_list})
 
     return {
         "run": {
@@ -1264,6 +1420,22 @@ def _build_summary_payload(
             "rds_inventory_error_count": (
                 0 if rds_inventory_snapshot is None else rds_inventory_snapshot.get("errorCount", 0)
             ),
+            "ecs_service_count": (
+                0 if ecs_inventory_snapshot is None else ecs_inventory_snapshot.get("itemCount", 0)
+            ),
+            "nat_gateway_count": (
+                0
+                if nat_gateway_inventory_snapshot is None
+                else nat_gateway_inventory_snapshot.get("itemCount", 0)
+            ),
+            "lambda_function_count": (
+                0
+                if lambda_inventory_snapshot is None
+                else lambda_inventory_snapshot.get("itemCount", 0)
+            ),
+            "s3_bucket_count": (
+                0 if s3_inventory_snapshot is None else s3_inventory_snapshot.get("itemCount", 0)
+            ),
         },
         "schedule_recommendations": {
             "recommendation_count": len(schedule_recommendation_list),
@@ -1273,6 +1445,7 @@ def _build_summary_payload(
         "actions": {
             "count": len(action_opportunity_list),
             "total_monthly_savings": total_action_monthly_savings,
+            "lever_keys": lever_keys,
             "top_actions": [item.action_label for item in action_opportunity_list[:3]],
         },
         "fallbacks": {
@@ -1696,8 +1869,7 @@ def _build_s3_publish_assets(
                 object_name="appendix.html",
                 label="Technical Appendix",
                 description=(
-                    "Separate operator appendix with validation, readiness, "
-                    "and raw context."
+                    "Separate operator appendix with validation, readiness, and raw context."
                 ),
                 include_in_index=True,
                 content_type="text/html; charset=utf-8",
@@ -2095,10 +2267,78 @@ def handle_run(args: argparse.Namespace) -> int:
         session_name=resolved.session_name,
         current_account_id=access_report.account_id,
     )
+    ecs_inventory_path, ecs_inventory_snapshot = _collect_ecs_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    nat_inventory_path, nat_inventory_snapshot = _collect_nat_gateway_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    lambda_inventory_path, lambda_inventory_snapshot = _collect_lambda_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    s3_inventory_path, s3_inventory_snapshot = _collect_s3_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
     _print_ebs_inventory_summary(ebs_inventory_path, ebs_inventory_snapshot)
     _print_rds_inventory_summary(rds_inventory_path, rds_inventory_snapshot)
+    _print_ecs_inventory_summary(ecs_inventory_path, ecs_inventory_snapshot)
+    _print_nat_gateway_inventory_summary(nat_inventory_path, nat_inventory_snapshot)
+    _print_lambda_inventory_summary(lambda_inventory_path, lambda_inventory_snapshot)
+    _print_s3_inventory_summary(s3_inventory_path, s3_inventory_snapshot)
     native_actions = [
+        *build_commitment_actions(
+            account_map=account_map,
+            ec2_inventory_snapshot=ec2_inventory_snapshot,
+            rds_inventory_snapshot=rds_inventory_snapshot,
+            ce_savings_plan_snapshot=ce_savings_plan_snapshot,
+            recommendations=coh_normalized_recommendations,
+        ),
+        *build_ec2_compute_actions(
+            ec2_inventory_snapshot,
+            recommendations=coh_normalized_recommendations,
+        ),
+        *build_rds_optimization_actions(
+            rds_inventory_snapshot,
+            recommendations=coh_normalized_recommendations,
+        ),
+        *build_ecs_fargate_actions(
+            ecs_inventory_snapshot,
+            recommendations=coh_normalized_recommendations,
+        ),
+        *build_nat_gateway_actions(nat_inventory_snapshot),
         *build_native_ebs_actions(ebs_inventory_snapshot),
+        *build_lambda_memory_actions(
+            lambda_inventory_snapshot,
+            recommendations=coh_normalized_recommendations,
+        ),
+        *build_s3_storage_actions(s3_inventory_snapshot),
         *build_rds_schedule_actions(
             rds_inventory_snapshot,
             account_map=account_map,
@@ -2129,6 +2369,10 @@ def handle_run(args: argparse.Namespace) -> int:
         ec2_inventory_snapshot=ec2_inventory_snapshot,
         ebs_inventory_snapshot=ebs_inventory_snapshot,
         rds_inventory_snapshot=rds_inventory_snapshot,
+        ecs_inventory_snapshot=ecs_inventory_snapshot,
+        nat_gateway_inventory_snapshot=nat_inventory_snapshot,
+        lambda_inventory_snapshot=lambda_inventory_snapshot,
+        s3_inventory_snapshot=s3_inventory_snapshot,
         schedule_recommendations=schedule_recommendations,
         ce_rightsizing_snapshot=ce_rightsizing_snapshot,
         ce_savings_plan_snapshot=ce_savings_plan_snapshot,
@@ -2276,9 +2520,7 @@ def handle_run(args: argparse.Namespace) -> int:
         html=preview_html,
         stylesheet_source=dashboard_path.parent / "style.css",
         extra_pages=(
-            [("appendix.html", preview_appendix_html)]
-            if preview_appendix_html is not None
-            else []
+            [("appendix.html", preview_appendix_html)] if preview_appendix_html is not None else []
         ),
         asset_copies=[
             (accounts_path, preview_dir / "downloads" / accounts_path.name),
@@ -2543,9 +2785,7 @@ def handle_demo(args: argparse.Namespace) -> int:
         html=preview_html,
         stylesheet_source=dashboard_path.parent / "style.css",
         extra_pages=(
-            [("appendix.html", preview_appendix_html)]
-            if preview_appendix_html is not None
-            else []
+            [("appendix.html", preview_appendix_html)] if preview_appendix_html is not None else []
         ),
         asset_copies=[
             (accounts_path, preview_dir / "downloads" / accounts_path.name),

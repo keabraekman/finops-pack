@@ -69,9 +69,7 @@ def _normalize_volume(
         if isinstance(attachment, dict) and isinstance(attachment.get("InstanceId"), str)
     ]
     availability_zone = raw_volume.get("AvailabilityZone")
-    volume_arn = (
-        f"arn:{partition}:ec2:{region_name}:{account_record.account_id}:volume/{volume_id}"
-    )
+    volume_arn = f"arn:{partition}:ec2:{region_name}:{account_record.account_id}:volume/{volume_id}"
     tags = _normalize_tags(raw_volume.get("Tags"))
 
     return {

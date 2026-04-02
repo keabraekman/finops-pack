@@ -156,9 +156,7 @@ def _normalize_report_mode(value: Any) -> ReportMode:
         raise ValueError("report_mode must be a string.")
     normalized = value.strip()
     if normalized not in VALID_REPORT_MODES:
-        raise ValueError(
-            "report_mode must be one of: " + ", ".join(sorted(VALID_REPORT_MODES))
-        )
+        raise ValueError("report_mode must be one of: " + ", ".join(sorted(VALID_REPORT_MODES)))
     return normalized  # type: ignore[return-value]
 
 

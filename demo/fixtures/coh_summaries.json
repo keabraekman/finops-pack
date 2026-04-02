@@ -3,13 +3,13 @@
   "request": {},
   "pages": [
     {
-      "estimatedTotalDedupedSavings": 358.4,
+      "estimatedTotalDedupedSavings": 565.3,
       "currencyCode": "USD",
       "items": [
         {
           "group": "Rightsizing / Idle",
-          "estimatedMonthlySavings": 121.8,
-          "recommendationCount": 2
+          "estimatedMonthlySavings": 402.4,
+          "recommendationCount": 5
         },
         {
           "group": "Commitment",
@@ -18,8 +18,8 @@
         },
         {
           "group": "Storage / Network / Etc.",
-          "estimatedMonthlySavings": 52.4,
-          "recommendationCount": 3
+          "estimatedMonthlySavings": 0.0,
+          "recommendationCount": 0
         }
       ]
     }
@@ -27,8 +27,8 @@
   "items": [
     {
       "group": "Rightsizing / Idle",
-      "estimatedMonthlySavings": 121.8,
-      "recommendationCount": 2
+      "estimatedMonthlySavings": 402.4,
+      "recommendationCount": 5
     },
     {
       "group": "Commitment",
@@ -37,12 +37,12 @@
     },
     {
       "group": "Storage / Network / Etc.",
-      "estimatedMonthlySavings": 52.4,
-      "recommendationCount": 3
+      "estimatedMonthlySavings": 0.0,
+      "recommendationCount": 0
     }
   ],
   "itemCount": 3,
-  "estimatedTotalDedupedSavings": 358.4,
+  "estimatedTotalDedupedSavings": 565.3,
   "currencyCode": "USD",
   "groupBy": null,
   "metrics": null

@@ -111,92 +111,145 @@
     }
   },
   {
-    "recommendation_id": "rec-delete-ebs-sandbox-web",
+    "recommendation_id": "rec-graviton-batch",
     "source": "cost_optimization_hub",
-    "category": "storage/network/etc.",
-    "account_id": "222222222222",
+    "category": "rightsizing / idle deletion",
+    "account_id": "111111111111",
     "region": "us-east-1",
-    "resource_id": "vol-0abc1234def567890",
-    "resource_arn": "arn:aws:ec2:us-east-1:222222222222:volume/vol-0abc1234def567890",
-    "current_resource_type": "EbsVolume",
-    "current_resource_summary": "Unattached gp3 volume",
-    "action_type": "Delete",
+    "resource_id": "i-0graviton000000001",
+    "resource_arn": "arn:aws:ec2:us-east-1:111111111111:instance/i-0graviton000000001",
+    "current_resource_type": "Ec2Instance",
+    "recommended_resource_type": "Ec2Instance",
+    "current_resource_summary": "c6i.large service is a likely Graviton migration candidate",
+    "recommended_resource_summary": "c7g.large can satisfy observed demand",
+    "recommended_resource_details": {
+      "ec2Instance": {
+        "instanceType": "c7g.large"
+      }
+    },
+    "action_type": "MigrateToGraviton",
     "currency_code": "USD",
-    "estimated_monthly_savings": 18.4,
-    "estimated_monthly_cost": 18.4,
-    "estimated_savings_percentage": 100.0,
+    "estimated_monthly_savings": 55.4,
+    "estimated_monthly_cost": 245.0,
+    "estimated_savings_percentage": 22.6,
     "recommendation": {
-      "code": "coh-delete-ebsvolume",
-      "title": "Delete EbsVolume",
-      "summary": "Current: Unattached gp3 volume.",
-      "action": "Delete the idle EbsVolume if it is no longer needed.",
+      "code": "coh-migratetograviton-ec2instance",
+      "title": "MigrateToGraviton Ec2Instance",
+      "summary": "Current: c6i.large service is a likely Graviton migration candidate. Recommended: c7g.large can satisfy observed demand.",
+      "action": "Migrate the workload to Graviton after compatibility testing.",
       "effort": "medium",
       "risk": "medium",
       "savings": {
-        "monthly_low_usd": 18.4,
-        "monthly_high_usd": 18.4,
-        "annual_low_usd": 220.8,
-        "annual_high_usd": 220.8
+        "monthly_low_usd": 55.4,
+        "monthly_high_usd": 55.4,
+        "annual_low_usd": 664.8,
+        "annual_high_usd": 664.8
       }
     }
   },
   {
-    "recommendation_id": "rec-gp2-gp3-analytics",
+    "recommendation_id": "rec-graviton-analytics",
     "source": "cost_optimization_hub",
-    "category": "storage/network/etc.",
+    "category": "rightsizing / idle deletion",
     "account_id": "444444444444",
     "region": "us-west-2",
-    "resource_id": "vol-0def9876abc543210",
-    "resource_arn": "arn:aws:ec2:us-west-2:444444444444:volume/vol-0def9876abc543210",
-    "current_resource_type": "EbsVolume",
-    "current_resource_summary": "gp2 analytics volume with no special throughput needs",
-    "action_type": "Rightsize",
+    "resource_id": "i-0graviton000000002",
+    "resource_arn": "arn:aws:ec2:us-west-2:444444444444:instance/i-0graviton000000002",
+    "current_resource_type": "Ec2Instance",
+    "recommended_resource_type": "Ec2Instance",
+    "current_resource_summary": "m6i.large analytics worker is a likely Graviton migration candidate",
+    "recommended_resource_summary": "m7g.large can satisfy observed demand",
+    "recommended_resource_details": {
+      "ec2Instance": {
+        "instanceType": "m7g.large"
+      }
+    },
+    "action_type": "MigrateToGraviton",
     "currency_code": "USD",
-    "estimated_monthly_savings": 16.0,
-    "estimated_monthly_cost": 64.0,
-    "estimated_savings_percentage": 25.0,
+    "estimated_monthly_savings": 41.0,
+    "estimated_monthly_cost": 182.0,
+    "estimated_savings_percentage": 22.5,
     "recommendation": {
-      "code": "coh-modify-ebsvolume",
-      "title": "Tune EbsVolume",
-      "summary": "Current: gp2 analytics volume with no special throughput needs.",
-      "action": "Move the EbsVolume to a lower-cost storage configuration.",
+      "code": "coh-migratetograviton-ec2instance",
+      "title": "MigrateToGraviton Ec2Instance",
+      "summary": "Current: m6i.large analytics worker is a likely Graviton migration candidate. Recommended: m7g.large can satisfy observed demand.",
+      "action": "Migrate the workload to Graviton after compatibility testing.",
       "effort": "medium",
       "risk": "medium",
       "savings": {
-        "monthly_low_usd": 16.0,
-        "monthly_high_usd": 16.0,
-        "annual_low_usd": 192.0,
-        "annual_high_usd": 192.0
+        "monthly_low_usd": 41.0,
+        "monthly_high_usd": 41.0,
+        "annual_low_usd": 492.0,
+        "annual_high_usd": 492.0
       }
     }
   },
   {
-    "recommendation_id": "rec-delete-ebs-shared",
+    "recommendation_id": "rec-rds-rightsize-orders",
     "source": "cost_optimization_hub",
-    "category": "storage/network/etc.",
-    "account_id": "333333333333",
+    "category": "rightsizing / idle deletion",
+    "account_id": "111111111111",
     "region": "us-east-1",
-    "resource_id": "vol-0123aaaabbbbccccd",
-    "resource_arn": "arn:aws:ec2:us-east-1:333333333333:volume/vol-0123aaaabbbbccccd",
-    "current_resource_type": "EbsVolume",
-    "current_resource_summary": "Detached snapshot staging volume",
-    "action_type": "Delete",
+    "resource_id": "orders-prod-db",
+    "resource_arn": "arn:aws:rds:us-east-1:111111111111:db:orders-prod-db",
+    "current_resource_type": "RdsDbInstance",
+    "recommended_resource_type": "RdsDbInstance",
+    "current_resource_summary": "db.r6g.large running below expected CPU and memory demand",
+    "recommended_resource_summary": "db.r6g.medium estimated to satisfy demand",
+    "recommended_resource_details": {
+      "rdsDbInstance": {
+        "dbInstanceClass": "db.r6g.medium"
+      }
+    },
+    "action_type": "Rightsize",
     "currency_code": "USD",
-    "estimated_monthly_savings": 18.0,
-    "estimated_monthly_cost": 18.0,
-    "estimated_savings_percentage": 100.0,
+    "estimated_monthly_savings": 88.6,
+    "estimated_monthly_cost": 355.0,
+    "estimated_savings_percentage": 25.0,
     "recommendation": {
-      "code": "coh-delete-ebsvolume",
-      "title": "Delete EbsVolume",
-      "summary": "Current: Detached snapshot staging volume.",
-      "action": "Delete the idle EbsVolume if it is no longer needed.",
+      "code": "coh-rightsize-rdsdbinstance",
+      "title": "Rightsize RdsDbInstance",
+      "summary": "Current: db.r6g.large running below expected CPU and memory demand. Recommended: db.r6g.medium estimated to satisfy demand.",
+      "action": "Rightsize the RdsDbInstance after validating workload headroom.",
       "effort": "medium",
       "risk": "medium",
       "savings": {
-        "monthly_low_usd": 18.0,
-        "monthly_high_usd": 18.0,
-        "annual_low_usd": 216.0,
-        "annual_high_usd": 216.0
+        "monthly_low_usd": 88.6,
+        "monthly_high_usd": 88.6,
+        "annual_low_usd": 1063.2,
+        "annual_high_usd": 1063.2
+      }
+    }
+  },
+  {
+    "recommendation_id": "rec-ecs-rightsize-platform",
+    "source": "cost_optimization_hub",
+    "category": "rightsizing / idle deletion",
+    "account_id": "333333333333",
+    "region": "us-east-1",
+    "resource_id": "arn:aws:ecs:us-east-1:333333333333:service/platform-cluster/platform-web",
+    "resource_arn": "arn:aws:ecs:us-east-1:333333333333:service/platform-cluster/platform-web",
+    "current_resource_type": "EcsService",
+    "recommended_resource_type": "EcsService",
+    "current_resource_summary": "Fargate service reserves more CPU and memory than the recent workload uses",
+    "recommended_resource_summary": "Lower CPU and memory reservations estimated to satisfy demand",
+    "action_type": "Rightsize",
+    "currency_code": "USD",
+    "estimated_monthly_savings": 74.3,
+    "estimated_monthly_cost": 247.0,
+    "estimated_savings_percentage": 30.1,
+    "recommendation": {
+      "code": "coh-rightsize-ecsservice",
+      "title": "Rightsize EcsService",
+      "summary": "Current: Fargate service reserves more CPU and memory than the recent workload uses. Recommended: lower CPU and memory reservations estimated to satisfy demand.",
+      "action": "Adjust the ECS/Fargate service reservation after validating headroom.",
+      "effort": "medium",
+      "risk": "medium",
+      "savings": {
+        "monthly_low_usd": 74.3,
+        "monthly_high_usd": 74.3,
+        "annual_low_usd": 891.6,
+        "annual_high_usd": 891.6
       }
     }
   }

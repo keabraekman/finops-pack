@@ -10,6 +10,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.aws.assume_role import assume_role_session
+from finops_pack.collectors.cloudwatch import collect_single_stat_metric
 from finops_pack.collectors.ec2 import derive_account_role_arn
 from finops_pack.models import AccountRecord
 
@@ -75,18 +76,46 @@ def _normalize_instance(
     }
 
 
+def _normalize_cluster(
+    raw_cluster: dict[str, Any],
+    *,
+    account_record: AccountRecord,
+    region_name: str,
+) -> dict[str, Any] | None:
+    cluster_identifier = raw_cluster.get("DBClusterIdentifier")
+    if not isinstance(cluster_identifier, str) or not cluster_identifier:
+        return None
+    return {
+        "accountId": account_record.account_id,
+        "accountName": account_record.name,
+        "region": region_name,
+        "dbClusterIdentifier": cluster_identifier,
+        "dbClusterArn": raw_cluster.get("DBClusterArn", ""),
+        "engine": raw_cluster.get("Engine", ""),
+        "engineVersion": raw_cluster.get("EngineVersion", ""),
+        "status": raw_cluster.get("Status", ""),
+        "storageType": raw_cluster.get("StorageType", ""),
+        "allocatedStorage": raw_cluster.get("AllocatedStorage", 0),
+        "iops": raw_cluster.get("Iops", 0),
+        "backtrackWindow": raw_cluster.get("BacktrackWindow", 0),
+        "engineMode": raw_cluster.get("EngineMode", ""),
+    }
+
+
 def _collect_region_instances(
     session: boto3.Session,
     *,
     account_record: AccountRecord,
     region_name: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     client = session.client("rds", region_name=region_name)
-    paginator = client.get_paginator("describe_db_instances")
+    instance_paginator = client.get_paginator("describe_db_instances")
+    cluster_paginator = client.get_paginator("describe_db_clusters")
     collected: list[dict[str, Any]] = []
+    clusters: list[dict[str, Any]] = []
 
     try:
-        for page in paginator.paginate():
+        for page in instance_paginator.paginate():
             raw_instances = page.get("DBInstances", [])
             if not isinstance(raw_instances, list):
                 continue
@@ -99,13 +128,49 @@ def _collect_region_instances(
                     region_name=region_name,
                 )
                 if normalized is not None:
+                    db_instance_identifier = normalized["dbInstanceIdentifier"]
+                    dimensions = [{"Name": "DBInstanceIdentifier", "Value": db_instance_identifier}]
+                    normalized["avgCpuUtilization14d"] = collect_single_stat_metric(
+                        session,
+                        region_name=region_name,
+                        namespace="AWS/RDS",
+                        metric_name="CPUUtilization",
+                        dimensions=dimensions,
+                        statistic="Average",
+                    )
+                    normalized["avgFreeStorageBytes14d"] = collect_single_stat_metric(
+                        session,
+                        region_name=region_name,
+                        namespace="AWS/RDS",
+                        metric_name="FreeStorageSpace",
+                        dimensions=dimensions,
+                        statistic="Average",
+                    )
                     collected.append(normalized)
     except (ClientError, BotoCoreError) as exc:
         raise RuntimeError(
             f"Failed to describe RDS instances in {account_record.account_id}/{region_name}: {exc}"
         ) from exc
 
-    return collected
+    try:
+        for page in cluster_paginator.paginate():
+            raw_clusters = page.get("DBClusters", [])
+            if not isinstance(raw_clusters, list):
+                continue
+            for raw_cluster in raw_clusters:
+                if not isinstance(raw_cluster, dict):
+                    continue
+                normalized_cluster = _normalize_cluster(
+                    raw_cluster,
+                    account_record=account_record,
+                    region_name=region_name,
+                )
+                if normalized_cluster is not None:
+                    clusters.append(normalized_cluster)
+    except (ClientError, BotoCoreError):
+        pass
+
+    return collected, clusters
 
 
 def collect_rds_inventory(
@@ -126,6 +191,7 @@ def collect_rds_inventory(
     }
 
     items: list[dict[str, Any]] = []
+    clusters: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
 
     for account_record in account_records:
@@ -164,13 +230,13 @@ def collect_rds_inventory(
 
         for region_name in normalized_regions:
             try:
-                items.extend(
-                    _collect_region_instances(
-                        account_session,
-                        account_record=account_record,
-                        region_name=region_name,
-                    )
+                region_instances, region_clusters = _collect_region_instances(
+                    account_session,
+                    account_record=account_record,
+                    region_name=region_name,
                 )
+                items.extend(region_instances)
+                clusters.extend(region_clusters)
             except RuntimeError as exc:
                 errors.append(
                     {
@@ -182,15 +248,16 @@ def collect_rds_inventory(
                     }
                 )
 
-    items.sort(
-        key=lambda item: (item["accountId"], item["region"], item["dbInstanceIdentifier"])
-    )
+    items.sort(key=lambda item: (item["accountId"], item["region"], item["dbInstanceIdentifier"]))
+    clusters.sort(key=lambda item: (item["accountId"], item["region"], item["dbClusterIdentifier"]))
     return {
         "operation": "DescribeDBInstances",
         "regions": normalized_regions,
         "accountCount": len(account_records),
         "itemCount": len(items),
+        "clusterCount": len(clusters),
         "errorCount": len(errors),
         "items": items,
+        "clusters": clusters,
         "errors": errors,
     }

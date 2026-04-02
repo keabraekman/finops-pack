@@ -192,6 +192,7 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
         actions.append(
             ActionOpportunity(
                 bucket="Storage cleanup",
+                lever_key="ebs_cleanup_tuning",
                 action_label=(
                     "Delete "
                     f"{len(unattached)} unattached EBS "
@@ -215,6 +216,8 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
                     f"{len({item['account_id'] for item in unattached})} account(s)."
                 ),
                 opportunity_count=len(unattached),
+                resource_count=len(unattached),
+                account_count=len({item["account_id"] for item in unattached}),
                 account_names=sorted({item["account_name"] for item in unattached}),
                 supporting_items=[_format_volume_detail(item) for item in unattached[:5]],
             )
@@ -227,6 +230,7 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
         actions.append(
             ActionOpportunity(
                 bucket="Storage cleanup",
+                lever_key="ebs_cleanup_tuning",
                 action_label=(
                     f"Migrate {len(attached_gp2_to_gp3)} gp2 EBS "
                     f"{_pluralize('volume', len(attached_gp2_to_gp3))} to gp3"
@@ -249,10 +253,10 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
                     "default storage pricing assumptions."
                 ),
                 opportunity_count=len(attached_gp2_to_gp3),
+                resource_count=len(attached_gp2_to_gp3),
+                account_count=len({item["account_id"] for item in attached_gp2_to_gp3}),
                 account_names=sorted({item["account_name"] for item in attached_gp2_to_gp3}),
-                supporting_items=[
-                    _format_volume_detail(item) for item in attached_gp2_to_gp3[:5]
-                ],
+                supporting_items=[_format_volume_detail(item) for item in attached_gp2_to_gp3[:5]],
             )
         )
 
@@ -263,6 +267,7 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
         actions.append(
             ActionOpportunity(
                 bucket="Storage cleanup",
+                lever_key="ebs_cleanup_tuning",
                 action_label=(
                     "Reduce provisioned performance on "
                     f"{len(attached_overprovisioned)} gp3 EBS "
@@ -286,6 +291,8 @@ def build_native_ebs_actions(inventory_snapshot: dict[str, Any] | None) -> list[
                     "for IOPS or throughput."
                 ),
                 opportunity_count=len(attached_overprovisioned),
+                resource_count=len(attached_overprovisioned),
+                account_count=len({item["account_id"] for item in attached_overprovisioned}),
                 account_names=sorted({item["account_name"] for item in attached_overprovisioned}),
                 supporting_items=[
                     _format_volume_detail(item) for item in attached_overprovisioned[:5]

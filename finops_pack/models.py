@@ -40,8 +40,28 @@ ActionBucket = Literal[
     "Buy discounts",
     "Storage cleanup",
 ]
+LeverKey = Literal[
+    "nonprod_schedule",
+    "commitments",
+    "ec2_rightsizing",
+    "graviton_migration",
+    "rds_rightsizing",
+    "rds_nonprod_schedule",
+    "ecs_fargate_rightsizing",
+    "nat_gateway_cleanup",
+    "ebs_cleanup_tuning",
+    "lambda_memory_rightsizing",
+    "rds_aurora_storage_tuning",
+    "s3_lifecycle_storage_class",
+]
 ActionPriority = Literal["low", "medium", "high"]
-ActionSourceLabel = Literal["Native finops-pack", "AWS COH", "CE fallback"]
+ActionSourceLabel = Literal[
+    "Native finops-pack",
+    "AWS COH",
+    "AWS Compute Optimizer",
+    "CE fallback",
+    "Mixed / derived",
+]
 
 
 @dataclass(config=ConfigDict(extra="forbid"))
@@ -158,6 +178,7 @@ class Recommendation:
 @dataclass(config=ConfigDict(extra="forbid"))
 class ActionOpportunity:
     bucket: ActionBucket
+    lever_key: LeverKey
     action_label: str
     monthly_savings: float = Field(ge=0)
     risk: ActionPriority = "low"
@@ -169,15 +190,23 @@ class ActionOpportunity:
     evidence_summary: str = ""
     action_id: str | None = None
     opportunity_count: int = Field(default=1, ge=1)
+    resource_count: int = Field(default=1, ge=1)
+    account_count: int = Field(default=1, ge=1)
     account_names: list[str] = Field(default_factory=list)
     supporting_items: list[dict[str, Any]] = Field(default_factory=list)
 
     def __post_init__(self) -> None:
+        if self.resource_count < self.opportunity_count:
+            self.resource_count = self.opportunity_count
+        if not self.account_names and self.account_count > 0:
+            self.account_names = []
+        if self.account_count < 1:
+            self.account_count = max(1, len(set(self.account_names)))
         if self.action_id is None:
             digest = hashlib.sha256(
                 (
-                    f"{self.bucket}|{self.action_label}|{self.source_label}|"
-                    f"{self.opportunity_count}"
+                    f"{self.bucket}|{self.lever_key}|{self.action_label}|"
+                    f"{self.source_label}|{self.resource_count}|{self.account_count}"
                 ).encode()
             ).hexdigest()
             self.action_id = f"action-{digest}"

@@ -16,6 +16,7 @@ from finops_pack.analyzers.action_opportunities import (
     build_action_opportunities,
     summarize_actions_by_bucket,
 )
+from finops_pack.levers import BUCKET_ORDER, LEVER_ORDER, lever_label
 from finops_pack.models import (
     AccessReport,
     AccountMapEntry,
@@ -44,7 +45,6 @@ ENVIRONMENT_LABELS = {
     "nonprod": "Non-Prod",
     "unknown": "Needs Review",
 }
-BUCKET_ORDER = ["Stop waste", "Rightsize", "Buy discounts", "Storage cleanup"]
 
 
 def _group_accounts(account_map: list[AccountMapEntry]) -> dict[str, list[AccountMapEntry]]:
@@ -778,22 +778,25 @@ def _build_savings_by_lever_context(
 def _is_modeled_schedule_action(action: ActionOpportunity) -> bool:
     """Return whether an action is a native stop/start schedule estimate."""
     return (
-        action.source_label == "Native finops-pack"
-        and "off-hours" in action.action_label.lower()
+        action.source_label == "Native finops-pack" and "off-hours" in action.action_label.lower()
     )
 
 
 def _is_aws_generated_action(action: ActionOpportunity) -> bool:
     """Return whether an action comes directly from AWS-generated recommendation data."""
-    return action.source_label in {"AWS COH", "CE fallback"}
+    return action.source_label in {"AWS COH", "AWS Compute Optimizer", "CE fallback"}
 
 
 def _source_trust_note(action: ActionOpportunity) -> str:
     """Return short trust language for the action source."""
     if action.source_label == "AWS COH":
         return "AWS-generated recommendation"
+    if action.source_label == "AWS Compute Optimizer":
+        return "AWS-generated utilization recommendation"
     if action.source_label == "CE fallback":
         return "AWS-generated fallback signal"
+    if action.source_label == "Mixed / derived":
+        return "derived from multiple AWS signals"
     if _is_modeled_schedule_action(action):
         return "finops-pack modeled estimate"
     return "finops-pack native heuristic"
@@ -803,10 +806,23 @@ def _build_action_rows(actions: Sequence[ActionOpportunity] | None) -> list[dict
     """Flatten ranked actions into render-friendly rows."""
     rows: list[dict[str, Any]] = []
     for action in actions or []:
+        supporting_items: list[dict[str, Any]] = []
+        for item in action.supporting_items:
+            normalized_item = dict(item)
+            if "monthly_savings_display" not in normalized_item and isinstance(
+                normalized_item.get("monthly_savings"),
+                (int, float),
+            ):
+                normalized_item["monthly_savings_display"] = (
+                    f"{_format_currency(float(normalized_item['monthly_savings']), 'USD')}/mo"
+                )
+            supporting_items.append(normalized_item)
         rows.append(
             {
                 "action_id": action.action_id,
                 "bucket": action.bucket,
+                "lever_key": action.lever_key,
+                "lever_label": lever_label(action.lever_key),
                 "action_label": action.action_label,
                 "monthly_savings": action.monthly_savings,
                 "monthly_savings_display": (
@@ -824,11 +840,45 @@ def _build_action_rows(actions: Sequence[ActionOpportunity] | None) -> list[dict
                 "what_to_do_first": action.what_to_do_first,
                 "evidence_summary": action.evidence_summary,
                 "opportunity_count": action.opportunity_count,
+                "resource_count": action.resource_count,
+                "account_count": action.account_count,
                 "account_names": action.account_names,
-                "supporting_items": list(action.supporting_items),
+                "supporting_items": supporting_items,
             }
         )
     return rows
+
+
+def _build_appendix_action_sections(action_rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group normalized actions by first-class savings lever for the appendix."""
+    by_lever: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in action_rows:
+        by_lever[str(row["lever_key"])].append(row)
+
+    sections: list[dict[str, Any]] = []
+    for lever_key in LEVER_ORDER:
+        rows = by_lever.get(lever_key, [])
+        if not rows:
+            continue
+        rows.sort(key=lambda row: (-float(row["monthly_savings"]), row["action_label"].lower()))
+        sections.append(
+            {
+                "lever_key": lever_key,
+                "lever_label": lever_label(lever_key),
+                "bucket": rows[0]["bucket"],
+                "monthly_savings_display": _format_currency(
+                    round(sum(float(row["monthly_savings"]) for row in rows), 2),
+                    "USD",
+                ),
+                "resource_count": sum(int(row["resource_count"]) for row in rows),
+                "account_count": len(
+                    {account_name for row in rows for account_name in row.get("account_names", [])}
+                )
+                or max(int(row["account_count"]) for row in rows),
+                "actions": rows,
+            }
+        )
+    return sections
 
 
 def _build_action_context(
@@ -950,7 +1000,8 @@ def _build_action_context(
         "trust_note": (
             "AWS COH findings are AWS-generated recommendations. "
             "finops-pack schedule savings are modeled estimates based on off-hours "
-            "usage assumptions."
+            "usage assumptions. Other native finops-pack findings use conservative "
+            "heuristics from inventory and recent AWS metrics."
         ),
         "total_monthly_savings": total_monthly_savings,
         "total_monthly_savings_display": _format_currency(total_monthly_savings, "USD"),
@@ -988,6 +1039,7 @@ def _build_action_context(
         "bucket_summaries": bucket_summaries,
         "bucket_details": bucket_details,
         "comparison_context": comparison_context,
+        "appendix_action_sections": _build_appendix_action_sections(action_rows),
     }
 
 
@@ -1084,6 +1136,7 @@ def _build_dashboard_template_context(
         "prerequisites_context": prerequisites_context,
         "remediation_context": remediation_context,
         "download_links": list(download_links or []),
+        "appendix_action_sections": action_context["appendix_action_sections"],
         "show_findings_section": False,
         "show_recommendations_section": False,
     }
@@ -1148,9 +1201,7 @@ def render_dashboard_html(
         autoescape=select_autoescape(["html", "xml"]),
     )
     template_name = (
-        "report_lead_magnet.html.j2"
-        if report_mode == "lead_magnet"
-        else "report.html.j2"
+        "report_lead_magnet.html.j2" if report_mode == "lead_magnet" else "report.html.j2"
     )
     template = environment.get_template(template_name)
     context = _build_dashboard_template_context(
