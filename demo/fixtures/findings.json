@@ -1,1 +1,35 @@
-[]
+[
+  {
+    "finding_type": "idle_resource",
+    "severity": "medium",
+    "resource": {
+      "provider": "aws",
+      "account_id": "222222222222",
+      "region": "us-east-1",
+      "service": "ec2",
+      "resource_id": "i-0feedbead12345678",
+      "resource_name": "sandbox-web",
+      "arn": "arn:aws:ec2:us-east-1:222222222222:instance/i-0feedbead12345678",
+      "tags": {
+        "Environment": "sandbox",
+        "Owner": "platform"
+      }
+    },
+    "recommendation": {
+      "code": "stop-idle-ec2",
+      "title": "Stop idle EC2 instance",
+      "summary": "This EC2 instance appears underutilized outside business hours.",
+      "action": "Stop the instance during off-hours or rightsize it.",
+      "effort": "low",
+      "risk": "low",
+      "savings": {
+        "monthly_low_usd": 45.0,
+        "monthly_high_usd": 64.0,
+        "annual_low_usd": 540.0,
+        "annual_high_usd": 768.0
+      }
+    },
+    "finding_id": "finding-demo-1",
+    "notes": "Scrubbed demo fixture."
+  }
+]

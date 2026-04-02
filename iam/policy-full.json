@@ -2,49 +2,35 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ReadInventoryAndUsage",
+      "Sid": "ReadAccountInventory",
       "Effect": "Allow",
       "Action": [
-        "autoscaling:Describe*",
-        "cloudwatch:Describe*",
-        "cloudwatch:Get*",
-        "cloudwatch:List*",
-        "ec2:Describe*",
-        "elasticloadbalancing:Describe*",
-        "lambda:Get*",
-        "lambda:List*",
-        "organizations:ListAccounts",
-        "rds:Describe*",
-        "rds:ListTagsForResource",
-        "s3:GetBucketLocation",
-        "s3:GetBucketTagging",
-        "s3:GetBucketVersioning",
-        "s3:GetEncryptionConfiguration",
-        "s3:GetLifecycleConfiguration",
-        "s3:GetMetricsConfiguration",
-        "s3:GetObject",
-        "s3:GetObjectTagging",
-        "s3:List*",
-        "tag:GetResources",
-        "tag:GetTagKeys",
-        "tag:GetTagValues"
+        "ec2:DescribeInstances",
+        "organizations:ListAccounts"
       ],
       "Resource": "*"
     },
     {
-      "Sid": "ReadCostAndBillingSignals",
+      "Sid": "ReadCostAndOptimizationSignals",
       "Effect": "Allow",
       "Action": [
-        "ce:Describe*",
-        "ce:Get*",
-        "ce:List*",
+        "ce:GetCostAndUsage",
+        "ce:GetCostAndUsageWithResources",
+        "cost-optimization-hub:GetRecommendation",
         "cost-optimization-hub:ListEnrollmentStatuses",
         "cost-optimization-hub:ListRecommendationSummaries",
-        "cost-optimization-hub:ListRecommendations",
-        "cur:DescribeReportDefinitions",
-        "pricing:DescribeServices",
-        "pricing:GetAttributeValues",
-        "pricing:GetProducts"
+        "cost-optimization-hub:ListRecommendations"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ReadOptionalCeFallbackSignals",
+      "Effect": "Allow",
+      "Action": [
+        "ce:GetRightsizingRecommendation",
+        "ce:GetSavingsPlanPurchaseRecommendationDetails",
+        "ce:GetSavingsPlansPurchaseRecommendation",
+        "ce:StartSavingsPlansPurchaseRecommendationGeneration"
       ],
       "Resource": "*"
     },

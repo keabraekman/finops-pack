@@ -46,9 +46,15 @@ def test_demo_command_runs(tmp_path: Path) -> None:
     assert (output_dir / "accounts.json").exists()
     assert (output_dir / "access_report.json").exists()
     assert (output_dir / "dashboard.html").exists()
+    assert (output_dir / "exports.csv").exists()
+    assert (output_dir / "exports.json").exists()
+    assert (output_dir / "exports.schema.json").exists()
     assert (tmp_path / "out" / "summary.json").exists()
     assert (tmp_path / "out" / "index.html").exists()
     assert (tmp_path / "out" / "downloads" / "accounts.json").exists()
+    assert (tmp_path / "out" / "downloads" / "exports.json").exists()
+    assert (tmp_path / "out" / "downloads" / "exports.schema.json").exists()
+    assert (tmp_path / "out" / "schedule" / "schedule_recs.csv").exists()
 
 
 def test_run_requires_role_arn() -> None:
@@ -558,6 +564,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "style.css" in uploaded_asset_names
     assert "downloads/exports.csv" in uploaded_asset_names
     assert "downloads/exports.json" in uploaded_asset_names
+    assert "downloads/exports.schema.json" in uploaded_asset_names
     assert "summary.json" in uploaded_asset_names
     build_schedule_recommendation_rows.assert_called_once_with(
         collect_ec2_inventory.return_value,
@@ -587,6 +594,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "coh_normalized_recommendation_count=1" in output
     assert "coh_csv_export_path=" in output
     assert "coh_json_export_path=" in output
+    assert "coh_schema_export_path=" in output
     assert "ec2_inventory_instance_count=1" in output
     assert "schedule_recommendation_count=1" in output
     assert "schedule_estimated_count=1" in output
@@ -658,6 +666,11 @@ def test_handle_run_enables_cost_optimization_hub(
     assert (
         "i-1234567890abcdef0,123456789012,Ec2Instance,Rightsize,42.5,us-east-1,2026-03-10=$4.20"
     ) in exports_csv
+    exports_schema = json.loads(
+        (tmp_path / "output" / "exports.schema.json").read_text(encoding="utf-8")
+    )
+    assert exports_schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+    assert exports_schema["type"] == "array"
     schedule_csv = (tmp_path / "out" / "schedule" / "schedule_recs.csv").read_text(encoding="utf-8")
     assert (
         "estimatedOffHoursDailySavingsLow,estimatedOffHoursDailySavings,"
@@ -696,6 +709,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert 'href="downloads/access_report.json"' in preview_html
     assert 'href="downloads/exports.csv"' in preview_html
     assert 'href="downloads/exports.json"' in preview_html
+    assert 'href="downloads/exports.schema.json"' in preview_html
     assert 'href="summary.json"' in preview_html
     assert 'href="schedule/schedule_recs.csv"' in preview_html
     assert (tmp_path / "out" / "report-bundle.zip").exists()
@@ -703,6 +717,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert (tmp_path / "out" / "downloads" / "access_report.json").exists()
     assert (tmp_path / "out" / "downloads" / "exports.csv").exists()
     assert (tmp_path / "out" / "downloads" / "exports.json").exists()
+    assert (tmp_path / "out" / "downloads" / "exports.schema.json").exists()
 
     publish_report_site_to_s3.reset_mock()
     load_previous_summary_from_s3.reset_mock()

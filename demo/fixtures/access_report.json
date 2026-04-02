@@ -1,0 +1,57 @@
+{
+  "account_id": "123456789012",
+  "region_coverage": {
+    "strategy": "fixed",
+    "primary_region": "us-east-1",
+    "regions": [
+      "us-east-1",
+      "us-west-2"
+    ]
+  },
+  "checks": [
+    {
+      "check_id": "cost_optimization_hub",
+      "label": "COH enabled?",
+      "status": "ACTIVE",
+      "enabled": true,
+      "reason": "Cost Optimization Hub enrollment status is Active.",
+      "checked_in_region": "us-east-1"
+    },
+    {
+      "check_id": "cost_explorer",
+      "label": "CE enabled?",
+      "status": "ACTIVE",
+      "enabled": true,
+      "reason": "Cost Explorer returned billing data for a recent completed day.",
+      "checked_in_region": "us-east-1"
+    },
+    {
+      "check_id": "resource_level_costs",
+      "label": "resource-level enabled?",
+      "status": "ACTIVE",
+      "enabled": true,
+      "reason": "Resource-level daily cost data is queryable for a recent completed day.",
+      "checked_in_region": "us-east-1"
+    }
+  ],
+  "modules": [
+    {
+      "module_id": "cost_optimization_hub",
+      "label": "Cost Optimization Hub module",
+      "status": "ACTIVE",
+      "reason": "Cost Optimization Hub enrollment status is Active."
+    },
+    {
+      "module_id": "cost_explorer",
+      "label": "Cost Explorer module",
+      "status": "ACTIVE",
+      "reason": "Cost Explorer returned billing data for a recent completed day."
+    },
+    {
+      "module_id": "resource_level_costs",
+      "label": "Resource-level cost module",
+      "status": "ACTIVE",
+      "reason": "Resource-level daily cost data is queryable for a recent completed day."
+    }
+  ]
+}

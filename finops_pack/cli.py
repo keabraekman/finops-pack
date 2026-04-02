@@ -42,8 +42,10 @@ from finops_pack.aws.cost_optimization_hub import (
     normalize_recommendation,
 )
 from finops_pack.collectors.ec2 import collect_ec2_inventory
-from finops_pack.collectors.organizations import list_accounts, load_account_records
+from finops_pack.collectors.organizations import list_accounts
 from finops_pack.config import ScheduleConfig, load_config, merge_run_config, resolve_regions
+from finops_pack.demo_fixtures import load_demo_fixture_bundle
+from finops_pack.export_schema import write_export_recommendations_schema
 from finops_pack.iam_policy_generator import render_policy, write_policy
 from finops_pack.models import (
     AccessCheck,
@@ -220,7 +222,8 @@ def _check_cost_optimization_hub(session: Any, *, account_id: str | None) -> Acc
             enabled=False,
             reason=(
                 "Cost Optimization Hub enrollment status is Inactive. "
-                "Recommendations stay unavailable until the account is enrolled."
+                "Recommendations stay unavailable until the account is enrolled. "
+                "Rerun with --enable-coh or enroll the account manually."
             ),
             checked_in_region=BILLING_CONTROL_PLANE_REGION,
         )
@@ -245,7 +248,13 @@ def _check_cost_explorer(session: Any) -> AccessCheck:
         )
     except ClientError as exc:
         code, message = _extract_client_error(exc)
-        if code in ACCESS_DENIED_CODES:
+        if code == "OptInRequiredException":
+            enabled = False
+            reason = (
+                "Cost Explorer is not enabled for this account yet. "
+                "Enable Cost Explorer in Billing and Cost Management before retrying."
+            )
+        elif code in ACCESS_DENIED_CODES:
             enabled = None
             reason = (
                 "Could not determine Cost Explorer readiness because "
@@ -294,7 +303,13 @@ def _check_resource_level_costs(session: Any) -> AccessCheck:
         )
     except ClientError as exc:
         code, message = _extract_client_error(exc)
-        if code in ACCESS_DENIED_CODES:
+        if code == "OptInRequiredException":
+            enabled = False
+            reason = (
+                "Cost Explorer resource-level daily data is not enabled. "
+                f"{_ce_resource_level_doc_guidance()}"
+            )
+        elif code in ACCESS_DENIED_CODES:
             enabled = None
             reason = (
                 "Could not determine resource-level Cost Explorer readiness because "
@@ -304,7 +319,7 @@ def _check_resource_level_costs(session: Any) -> AccessCheck:
             enabled = False
             reason = (
                 "Resource-level daily cost data is not enabled or has not populated "
-                f"for the last 14 days. {CE_RESOURCE_LEVEL_DOC_NOTE}"
+                f"for the last 14 days. {_ce_resource_level_doc_guidance()}"
             )
         else:
             enabled = None
@@ -956,10 +971,11 @@ def _export_coh_recommendations(
     *,
     output_dir: Path,
     resource_daily_snapshot: dict[str, Any] | None = None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     """Write CSV and JSON recommendation exports for the current run."""
     csv_path = output_dir / "exports.csv"
     json_path = output_dir / "exports.json"
+    schema_path = output_dir / "exports.schema.json"
 
     resource_cost_lookup = (
         build_resource_cost_series_lookup(resource_daily_snapshot)
@@ -976,7 +992,8 @@ def _export_coh_recommendations(
 
     CsvExporter(fieldnames=fieldnames).export(csv_rows, csv_path)
     JsonExporter().export(recommendations, json_path)
-    return csv_path, json_path
+    write_export_recommendations_schema(schema_path)
+    return csv_path, json_path, schema_path
 
 
 def _print_coh_normalized_summary(
@@ -991,28 +1008,16 @@ def _print_coh_normalized_summary(
         print(f"coh_detail_error={error}")
 
 
-def _print_coh_export_summary(csv_path: Path, json_path: Path) -> None:
+def _print_coh_export_summary(csv_path: Path, json_path: Path, schema_path: Path) -> None:
     """Emit export file paths to stdout."""
     print(f"coh_csv_export_path={csv_path}")
     print(f"coh_json_export_path={json_path}")
+    print(f"coh_schema_export_path={schema_path}")
 
 
-def _export_schedule_recommendations(
-    inventory_snapshot: dict[str, Any],
-    *,
-    output_dir: Path,
-    schedule: ScheduleConfig,
-    resource_daily_snapshot: dict[str, Any] | None = None,
-) -> tuple[Path, list[dict[str, Any]]]:
-    """Write schedule recommendation CSV output for stoppable EC2 candidates."""
-    schedule_dir = _artifact_output_dir(output_dir) / "schedule"
-    csv_path = schedule_dir / "schedule_recs.csv"
-    rows = build_schedule_recommendation_rows(
-        inventory_snapshot,
-        schedule=schedule,
-        resource_daily_snapshot=resource_daily_snapshot,
-    )
-    fieldnames = [
+def _schedule_recommendation_fieldnames() -> list[str]:
+    """Return the stable CSV columns for schedule recommendation exports."""
+    return [
         "accountId",
         "accountName",
         "region",
@@ -1036,7 +1041,34 @@ def _export_schedule_recommendations(
         "estimationReason",
         "candidateReason",
     ]
-    CsvExporter(fieldnames=fieldnames).export(rows, csv_path)
+
+
+def _write_schedule_recommendation_rows(
+    rows: list[dict[str, Any]],
+    *,
+    output_dir: Path,
+) -> Path:
+    """Persist schedule recommendation rows as CSV under out/schedule/."""
+    schedule_dir = _artifact_output_dir(output_dir) / "schedule"
+    csv_path = schedule_dir / "schedule_recs.csv"
+    CsvExporter(fieldnames=_schedule_recommendation_fieldnames()).export(rows, csv_path)
+    return csv_path
+
+
+def _export_schedule_recommendations(
+    inventory_snapshot: dict[str, Any],
+    *,
+    output_dir: Path,
+    schedule: ScheduleConfig,
+    resource_daily_snapshot: dict[str, Any] | None = None,
+) -> tuple[Path, list[dict[str, Any]]]:
+    """Write schedule recommendation CSV output for stoppable EC2 candidates."""
+    rows = build_schedule_recommendation_rows(
+        inventory_snapshot,
+        schedule=schedule,
+        resource_daily_snapshot=resource_daily_snapshot,
+    )
+    csv_path = _write_schedule_recommendation_rows(rows, output_dir=output_dir)
     return csv_path, rows
 
 
@@ -1414,6 +1446,7 @@ def _build_dashboard_download_targets(
     bundle_path: Path | None = None,
     coh_csv_export_path: Path | None = None,
     coh_json_export_path: Path | None = None,
+    coh_schema_export_path: Path | None = None,
     schedule_recs_path: Path | None = None,
 ) -> list[tuple[str, str, Path]]:
     """Build labeled dashboard download targets."""
@@ -1463,6 +1496,15 @@ def _build_dashboard_download_targets(
                 "COH Export JSON",
                 "Full normalized Cost Optimization Hub recommendation payloads.",
                 coh_json_export_path,
+            )
+        )
+
+    if coh_schema_export_path is not None:
+        targets.append(
+            (
+                "COH Export Schema",
+                "JSON Schema documenting the structure of output/exports.json.",
+                coh_schema_export_path,
             )
         )
 
@@ -1741,7 +1783,11 @@ def handle_run(args: argparse.Namespace) -> int:
         region_name=BILLING_CONTROL_PLANE_REGION,
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
     )
-    coh_csv_export_path, coh_json_export_path = _export_coh_recommendations(
+    (
+        coh_csv_export_path,
+        coh_json_export_path,
+        coh_schema_export_path,
+    ) = _export_coh_recommendations(
         coh_normalized_recommendations,
         output_dir=output_dir,
         resource_daily_snapshot=resource_daily_snapshot,
@@ -1820,7 +1866,11 @@ def handle_run(args: argparse.Namespace) -> int:
         len(coh_normalized_recommendations),
         coh_detail_errors,
     )
-    _print_coh_export_summary(coh_csv_export_path, coh_json_export_path)
+    _print_coh_export_summary(
+        coh_csv_export_path,
+        coh_json_export_path,
+        coh_schema_export_path,
+    )
     if ce_rightsizing_path is not None and ce_rightsizing_snapshot is not None:
         _print_ce_rightsizing_summary(ce_rightsizing_path, ce_rightsizing_snapshot)
     if ce_savings_plan_path is not None and ce_savings_plan_snapshot is not None:
@@ -1914,6 +1964,7 @@ def handle_run(args: argparse.Namespace) -> int:
         bundle_path=preview_bundle_path,
         coh_csv_export_path=coh_csv_export_path,
         coh_json_export_path=coh_json_export_path,
+        coh_schema_export_path=coh_schema_export_path,
         schedule_recs_path=schedule_recs_path,
     )
     output_download_links = build_dashboard_download_links(
@@ -1948,6 +1999,7 @@ def handle_run(args: argparse.Namespace) -> int:
         bundle_path=preview_bundle_path,
         coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
         coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
+        coh_schema_export_path=preview_dir / "downloads" / coh_schema_export_path.name,
         schedule_recs_path=schedule_recs_path,
     )
     preview_download_links = build_dashboard_download_links(
@@ -1983,6 +2035,7 @@ def handle_run(args: argparse.Namespace) -> int:
             (access_report_path, preview_dir / "downloads" / access_report_path.name),
             (coh_csv_export_path, preview_dir / "downloads" / coh_csv_export_path.name),
             (coh_json_export_path, preview_dir / "downloads" / coh_json_export_path.name),
+            (coh_schema_export_path, preview_dir / "downloads" / coh_schema_export_path.name),
         ],
     )
     write_preview_bundle(
@@ -2040,40 +2093,69 @@ def handle_demo(args: argparse.Namespace) -> int:
     file_config = load_config(args.config)
     fixture_dir = Path(file_config.demo_fixture_dir)
     output_dir = Path(args.output_dir or file_config.output_dir)
-    run_started_at = datetime.now(UTC)
-    run_generated_at = run_started_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-    run_id = build_run_id(run_started_at)
-    report_title = _build_report_title(file_config.client_id)
-    region_coverage = _build_region_coverage(resolve_regions(file_config))
+    default_region_coverage = _build_region_coverage(resolve_regions(file_config))
+    fixture_bundle = load_demo_fixture_bundle(
+        fixture_dir,
+        config=file_config,
+        fallback_region_coverage=default_region_coverage,
+    )
+    report_title = _build_report_title(fixture_bundle.client_id)
+    region_coverage = fixture_bundle.access_report.region_coverage or default_region_coverage
     privacy_context = _build_report_privacy_context(
         upload_enabled=False,
         no_upload=True,
         report_bucket=file_config.report_bucket,
-        client_id=file_config.client_id,
+        client_id=fixture_bundle.client_id,
         report_retention_days=file_config.report_retention_days,
     )
-    access_report = AccessReport(
-        account_id="Demo Fixture",
-        region_coverage=region_coverage,
+    raw_run = (
+        fixture_bundle.summary_payload.get("run", {})
+        if isinstance(fixture_bundle.summary_payload, dict)
+        else {}
     )
-    account_records = load_account_records(fixture_dir / "accounts.json")
-    account_map = classify_accounts(
-        account_records,
-        prod_account_ids=file_config.prod_account_ids,
-        nonprod_account_ids=file_config.nonprod_account_ids,
+    rate_limit_safe_mode = bool(
+        raw_run.get("rate_limit_safe_mode")
+        if isinstance(raw_run, dict)
+        else file_config.rate_limit_safe_mode
+    )
+    coh_csv_export_path, coh_json_export_path, coh_schema_export_path = _export_coh_recommendations(
+        fixture_bundle.recommendations,
+        output_dir=output_dir,
+    )
+    normalized_path = _normalized_output_dir(output_dir) / "recommendations.json"
+    JsonExporter().export(fixture_bundle.recommendations, normalized_path)
+    schedule_recs_path = _write_schedule_recommendation_rows(
+        fixture_bundle.schedule_recommendations,
+        output_dir=output_dir,
+    )
+    if fixture_bundle.spend_baseline_snapshot is not None:
+        _write_json_snapshot(
+            _raw_output_dir(output_dir) / "ce_total_spend.json",
+            fixture_bundle.spend_baseline_snapshot,
+        )
+    if isinstance(fixture_bundle.coh_summary, dict):
+        _write_json_snapshot(
+            _raw_output_dir(output_dir) / "coh_summaries.json",
+            fixture_bundle.coh_summary,
+        )
+    summary_payload = _build_summary_payload(
+        generated_at=fixture_bundle.generated_at,
+        client_id=fixture_bundle.client_id,
+        run_id=fixture_bundle.run_id,
+        region=fixture_bundle.region,
+        schedule=fixture_bundle.schedule,
+        rate_limit_safe_mode=rate_limit_safe_mode,
+        account_map=fixture_bundle.account_map,
+        access_report=fixture_bundle.access_report,
+        schedule_recommendations=fixture_bundle.schedule_recommendations,
+        spend_baseline=fixture_bundle.spend_baseline,
+        summaries_snapshot=fixture_bundle.coh_summary,
+        normalized_recommendations=fixture_bundle.recommendations,
+        comparison=fixture_bundle.comparison_context,
     )
     summary_path = _write_summary_output(
         output_dir,
-        _build_summary_payload(
-            generated_at=run_generated_at,
-            client_id=file_config.client_id,
-            run_id=run_id,
-            region=file_config.region,
-            schedule=file_config.schedule,
-            rate_limit_safe_mode=file_config.rate_limit_safe_mode,
-            account_map=account_map,
-            access_report=access_report,
-        ),
+        summary_payload,
     )
     output_dashboard_path = output_dir / "dashboard.html"
     preview_dir = _artifact_output_dir(output_dir)
@@ -2085,19 +2167,29 @@ def handle_demo(args: argparse.Namespace) -> int:
             access_report_path=output_dir / "access_report.json",
             summary_path=summary_path,
             bundle_path=preview_bundle_path,
+            coh_csv_export_path=coh_csv_export_path,
+            coh_json_export_path=coh_json_export_path,
+            coh_schema_export_path=coh_schema_export_path,
+            schedule_recs_path=schedule_recs_path,
         ),
     )
     accounts_path, access_report_path, dashboard_path = _write_account_outputs(
-        account_map,
+        fixture_bundle.account_map,
         output_dir=output_dir,
         title=report_title,
-        generated_at=run_generated_at,
-        client_id=file_config.client_id,
-        run_id=run_id,
-        region=file_config.region,
-        account_id="Demo Fixture",
-        access_report=access_report,
+        generated_at=fixture_bundle.generated_at,
+        client_id=fixture_bundle.client_id,
+        run_id=fixture_bundle.run_id,
+        region=fixture_bundle.region,
+        account_id=fixture_bundle.account_label,
+        access_report=fixture_bundle.access_report,
+        spend_baseline=fixture_bundle.spend_baseline,
+        spend_baseline_error=fixture_bundle.spend_baseline_error,
+        coh_summary=fixture_bundle.coh_summary,
+        recommendations=fixture_bundle.recommendations,
+        schedule_recommendations=fixture_bundle.schedule_recommendations,
         privacy_context=privacy_context,
+        comparison_context=fixture_bundle.comparison_context,
         download_links=output_download_links,
     )
     preview_download_links = build_dashboard_download_links(
@@ -2107,18 +2199,28 @@ def handle_demo(args: argparse.Namespace) -> int:
             access_report_path=preview_dir / "downloads" / "access_report.json",
             summary_path=summary_path,
             bundle_path=preview_bundle_path,
+            coh_csv_export_path=preview_dir / "downloads" / coh_csv_export_path.name,
+            coh_json_export_path=preview_dir / "downloads" / coh_json_export_path.name,
+            coh_schema_export_path=preview_dir / "downloads" / coh_schema_export_path.name,
+            schedule_recs_path=schedule_recs_path,
         ),
     )
     preview_html = render_dashboard_html(
-        account_map,
+        fixture_bundle.account_map,
         title=report_title,
-        generated_at=run_generated_at,
-        client_id=file_config.client_id,
-        run_id=run_id,
-        account_id="Demo Fixture",
-        region=file_config.region,
-        access_report=access_report,
+        generated_at=fixture_bundle.generated_at,
+        client_id=fixture_bundle.client_id,
+        run_id=fixture_bundle.run_id,
+        account_id=fixture_bundle.account_label,
+        region=fixture_bundle.region,
+        access_report=fixture_bundle.access_report,
+        spend_baseline=fixture_bundle.spend_baseline,
+        spend_baseline_error=fixture_bundle.spend_baseline_error,
+        coh_summary=fixture_bundle.coh_summary,
+        recommendations=fixture_bundle.recommendations,
+        schedule_recommendations=fixture_bundle.schedule_recommendations,
         privacy_context=privacy_context,
+        comparison_context=fixture_bundle.comparison_context,
         download_links=preview_download_links,
     )
     preview_path = publish_preview_site(
@@ -2128,6 +2230,9 @@ def handle_demo(args: argparse.Namespace) -> int:
         asset_copies=[
             (accounts_path, preview_dir / "downloads" / accounts_path.name),
             (access_report_path, preview_dir / "downloads" / access_report_path.name),
+            (coh_csv_export_path, preview_dir / "downloads" / coh_csv_export_path.name),
+            (coh_json_export_path, preview_dir / "downloads" / coh_json_export_path.name),
+            (coh_schema_export_path, preview_dir / "downloads" / coh_schema_export_path.name),
         ],
     )
     write_preview_bundle(
@@ -2137,16 +2242,23 @@ def handle_demo(args: argparse.Namespace) -> int:
 
     print("Running finops-pack in demo mode")
     print(f"fixture_dir={fixture_dir}")
-    if file_config.client_id:
-        print(f"client_id={file_config.client_id}")
-    print(f"run_id={run_id}")
+    if fixture_bundle.client_id:
+        print(f"client_id={fixture_bundle.client_id}")
+    print(f"run_id={fixture_bundle.run_id}")
     _print_region_coverage(region_coverage)
-    _print_schedule_config(file_config.schedule)
-    print(f"account_count={len(account_map)}")
+    _print_schedule_config(fixture_bundle.schedule)
+    _print_coh_export_summary(
+        coh_csv_export_path,
+        coh_json_export_path,
+        coh_schema_export_path,
+    )
+    print(f"account_count={len(fixture_bundle.account_map)}")
     print(f"accounts_path={accounts_path}")
     print(f"access_report_path={access_report_path}")
     print(f"dashboard_path={dashboard_path}")
     print(f"summary_path={summary_path}")
+    print(f"normalized_recommendations_path={normalized_path}")
+    print(f"schedule_recs_path={schedule_recs_path}")
     print(f"preview_path={preview_path}")
     print(f"preview_command=cd {quote(str(preview_dir))} && python -m http.server")
 

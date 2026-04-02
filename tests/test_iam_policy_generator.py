@@ -25,11 +25,20 @@ def test_generate_policy_full_adds_optional_permissions() -> None:
     min_actions = _collect_actions(generate_policy("min"))
     full_actions = _collect_actions(generate_policy("full"))
 
+    assert "ec2:DescribeInstances" in min_actions
     assert "organizations:ListAccounts" in min_actions
+    assert "ce:GetCostAndUsage" in min_actions
+    assert "ce:GetCostAndUsageWithResources" in min_actions
+    assert "cost-optimization-hub:GetRecommendation" in min_actions
     assert "cost-optimization-hub:ListEnrollmentStatuses" in min_actions
     assert "cost-optimization-hub:ListRecommendationSummaries" in min_actions
     assert "cost-optimization-hub:ListRecommendations" in min_actions
+    assert "ce:GetRightsizingRecommendation" not in min_actions
     assert "cost-optimization-hub:UpdateEnrollmentStatus" not in min_actions
+    assert "ce:GetRightsizingRecommendation" in full_actions
+    assert "ce:GetSavingsPlansPurchaseRecommendation" in full_actions
+    assert "ce:GetSavingsPlanPurchaseRecommendationDetails" in full_actions
+    assert "ce:StartSavingsPlansPurchaseRecommendationGeneration" in full_actions
     assert "cost-optimization-hub:ListEnrollmentStatuses" in full_actions
     assert "cost-optimization-hub:ListRecommendationSummaries" in full_actions
     assert "cost-optimization-hub:ListRecommendations" in full_actions

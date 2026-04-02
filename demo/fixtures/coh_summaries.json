@@ -1,0 +1,49 @@
+{
+  "operation": "ListRecommendationSummaries",
+  "request": {},
+  "pages": [
+    {
+      "estimatedTotalDedupedSavings": 128.7,
+      "currencyCode": "USD",
+      "items": [
+        {
+          "group": "Rightsizing / Idle",
+          "estimatedMonthlySavings": 42.5,
+          "recommendationCount": 1
+        },
+        {
+          "group": "Commitment",
+          "estimatedMonthlySavings": 67.8,
+          "recommendationCount": 1
+        },
+        {
+          "group": "Storage / Network / Etc.",
+          "estimatedMonthlySavings": 18.4,
+          "recommendationCount": 1
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "group": "Rightsizing / Idle",
+      "estimatedMonthlySavings": 42.5,
+      "recommendationCount": 1
+    },
+    {
+      "group": "Commitment",
+      "estimatedMonthlySavings": 67.8,
+      "recommendationCount": 1
+    },
+    {
+      "group": "Storage / Network / Etc.",
+      "estimatedMonthlySavings": 18.4,
+      "recommendationCount": 1
+    }
+  ],
+  "itemCount": 3,
+  "estimatedTotalDedupedSavings": 128.7,
+  "currencyCode": "USD",
+  "groupBy": null,
+  "metrics": null
+}

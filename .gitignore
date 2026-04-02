@@ -20,6 +20,8 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+out/
+output/
 
 # IDE
 .vscode/

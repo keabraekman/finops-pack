@@ -1,1 +1,28 @@
-[]
+[
+  {
+    "provider": "aws",
+    "account_id": "111111111111",
+    "region": "us-east-1",
+    "service": "ec2",
+    "resource_id": "i-0123456789abcdef0",
+    "resource_name": "prod-core-api",
+    "arn": "arn:aws:ec2:us-east-1:111111111111:instance/i-0123456789abcdef0",
+    "tags": {
+      "Environment": "prod",
+      "Team": "core"
+    }
+  },
+  {
+    "provider": "aws",
+    "account_id": "222222222222",
+    "region": "us-east-1",
+    "service": "ec2",
+    "resource_id": "i-0feedbead12345678",
+    "resource_name": "sandbox-web",
+    "arn": "arn:aws:ec2:us-east-1:222222222222:instance/i-0feedbead12345678",
+    "tags": {
+      "Environment": "sandbox",
+      "Owner": "platform"
+    }
+  }
+]

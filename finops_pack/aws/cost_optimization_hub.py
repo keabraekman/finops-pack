@@ -25,6 +25,15 @@ COH_DETAIL_TOP_N = 20
 COMMITMENT_ACTION_TYPES = {"PurchaseSavingsPlans", "PurchaseReservedInstances"}
 RIGHTSIZING_ACTION_TYPES = {"Delete", "MigrateToGraviton", "Rightsize", "ScaleIn", "Stop"}
 COMMITMENT_TYPE_MARKERS = ("Reserved", "SavingsPlans")
+RIGHTSIZING_TYPE_MARKERS = (
+    "AutoScalingGroup",
+    "Cluster",
+    "Ec2Instance",
+    "EcsService",
+    "LambdaFunction",
+    "RdsDbInstance",
+)
+CONDITIONAL_RIGHTSIZING_ACTION_TYPES = {"Modernize", "Replace", "Terminate", "Upgrade"}
 THROTTLING_ERROR_CODES = {
     "RequestLimitExceeded",
     "SlowDown",
@@ -391,6 +400,10 @@ def categorize_recommendation(
 
     if action_type in RIGHTSIZING_ACTION_TYPES:
         return COH_CATEGORY_RIGHTSIZING
+    if action_type in CONDITIONAL_RIGHTSIZING_ACTION_TYPES and any(
+        marker in value for marker in RIGHTSIZING_TYPE_MARKERS for value in type_values
+    ):
+        return COH_CATEGORY_RIGHTSIZING
 
     return COH_CATEGORY_OTHER
 
@@ -455,9 +468,13 @@ def _build_action(detail: dict[str, Any], *, list_item: dict[str, Any] | None = 
         ),
         "PurchaseReservedInstances": "Purchase Reserved Instances for eligible usage.",
         "PurchaseSavingsPlans": "Purchase Savings Plans coverage for eligible usage.",
+        "Replace": f"Replace the {current_resource_type or 'resource'} as recommended.",
         "Rightsize": f"Rightsize the {current_resource_type or 'resource'}.",
         "ScaleIn": f"Scale in the {current_resource_type or 'resource'} where appropriate.",
         "Stop": f"Stop the idle {current_resource_type or 'resource'} when it is not required.",
+        "Terminate": (
+            f"Terminate the idle {current_resource_type or 'resource'} if it is no longer needed."
+        ),
         "Upgrade": f"Upgrade the {current_resource_type or 'resource'} as recommended.",
     }
     if action_type is not None and action_type in action_map:

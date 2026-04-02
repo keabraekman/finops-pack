@@ -134,6 +134,32 @@ def test_collect_resource_daily_costs_wraps_client_errors() -> None:
         collect_resource_daily_costs(session)
 
 
+def test_collect_resource_daily_costs_surfaces_opt_in_guidance() -> None:
+    client = Mock()
+    client.get_cost_and_usage_with_resources.side_effect = ClientError(
+        {"Error": {"Code": "OptInRequiredException", "Message": "opt in required"}},
+        "GetCostAndUsageWithResources",
+    )
+    session = Mock()
+    session.client.return_value = client
+
+    with pytest.raises(RuntimeError, match="opt-in and only covers the last 14 days"):
+        collect_resource_daily_costs(session)
+
+
+def test_collect_spend_baseline_surfaces_cost_explorer_opt_in_guidance() -> None:
+    client = Mock()
+    client.get_cost_and_usage.side_effect = ClientError(
+        {"Error": {"Code": "OptInRequiredException", "Message": "opt in required"}},
+        "GetCostAndUsage",
+    )
+    session = Mock()
+    session.client.return_value = client
+
+    with pytest.raises(RuntimeError, match="Cost Explorer is not enabled"):
+        collect_spend_baseline(session)
+
+
 def test_build_resource_cost_series_lookup_supports_resource_id_and_arn_matching() -> None:
     lookup = build_resource_cost_series_lookup(
         {

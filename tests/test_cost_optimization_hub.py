@@ -285,3 +285,27 @@ def test_normalize_recommendation_maps_rightsizing_category_from_list_summary() 
     assert normalized.recommendation.effort == "medium"
     assert normalized.recommendation.risk == "medium"
     assert normalized.recommended_resource_summary == "t3.large estimated to satisfy demand"
+
+
+def test_normalize_recommendation_maps_upgrade_for_compute_resources_to_rightsizing() -> None:
+    normalized = normalize_recommendation(
+        {
+            "recommendationId": "rec-upgrade",
+            "accountId": "123456789012",
+            "region": "us-east-1",
+            "resourceId": "db-123",
+            "resourceArn": "arn:aws:rds:us-east-1:123456789012:db:db-123",
+            "currentResourceType": "RdsDbInstance",
+            "recommendedResourceType": "RdsDbInstance",
+            "estimatedMonthlySavings": 21.0,
+            "currencyCode": "USD",
+            "implementationEffort": "Low",
+            "actionType": "Upgrade",
+            "restartNeeded": False,
+            "rollbackPossible": True,
+        }
+    )
+
+    assert normalized.category == "rightsizing / idle deletion"
+    assert normalized.recommendation is not None
+    assert normalized.recommendation.action == "Upgrade the RdsDbInstance as recommended."

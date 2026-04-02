@@ -1,4 +1,4 @@
-.PHONY: lint format typecheck test check run preview
+.PHONY: lint format typecheck test build check run preview
 
 lint:
 	uv run ruff check .
@@ -11,6 +11,9 @@ typecheck:
 
 test:
 	uv run pytest
+
+build:
+	uv build
 
 check: lint typecheck test
 

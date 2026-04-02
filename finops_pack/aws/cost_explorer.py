@@ -210,7 +210,15 @@ def collect_spend_baseline(
             rate_limit_safe_mode=rate_limit_safe_mode,
             operation_name="GetCostAndUsage",
         )
-    except (ClientError, BotoCoreError) as exc:
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code == "OptInRequiredException":
+            raise RuntimeError(
+                "Cost Explorer is not enabled for this account yet. "
+                "Enable Cost Explorer in Billing and Cost Management before retrying."
+            ) from exc
+        raise RuntimeError(f"Failed to collect Cost Explorer spend baseline: {exc}") from exc
+    except BotoCoreError as exc:
         raise RuntimeError(f"Failed to collect Cost Explorer spend baseline: {exc}") from exc
 
     results_by_time: list[dict[str, Any]] = []
@@ -300,7 +308,17 @@ def collect_resource_daily_costs(
             rate_limit_safe_mode=rate_limit_safe_mode,
             operation_name="GetCostAndUsageWithResources",
         )
-    except (ClientError, BotoCoreError) as exc:
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code in {"DataUnavailableException", "OptInRequiredException"}:
+            raise RuntimeError(
+                "Cost Explorer resource-level daily data is opt-in and only covers the last "
+                "14 days. Enable it in Billing and Cost Management preferences before retrying."
+            ) from exc
+        raise RuntimeError(
+            f"Failed to collect Cost Explorer resource-level daily costs: {exc}"
+        ) from exc
+    except BotoCoreError as exc:
         raise RuntimeError(
             f"Failed to collect Cost Explorer resource-level daily costs: {exc}"
         ) from exc

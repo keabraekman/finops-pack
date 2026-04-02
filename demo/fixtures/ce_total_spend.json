@@ -1,0 +1,74 @@
+{
+  "operation": "GetCostAndUsage",
+  "request": {
+    "TimePeriod": {
+      "Start": "2026-02-22",
+      "End": "2026-03-24"
+    },
+    "Granularity": "MONTHLY",
+    "Metrics": [
+      "UnblendedCost"
+    ]
+  },
+  "pages": [
+    {
+      "ResultsByTime": [
+        {
+          "TimePeriod": {
+            "Start": "2026-02-22",
+            "End": "2026-03-01"
+          },
+          "Total": {
+            "UnblendedCost": {
+              "Amount": "84.50",
+              "Unit": "USD"
+            }
+          }
+        },
+        {
+          "TimePeriod": {
+            "Start": "2026-03-01",
+            "End": "2026-03-24"
+          },
+          "Total": {
+            "UnblendedCost": {
+              "Amount": "115.50",
+              "Unit": "USD"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "resultsByTime": [
+    {
+      "TimePeriod": {
+        "Start": "2026-02-22",
+        "End": "2026-03-01"
+      },
+      "Total": {
+        "UnblendedCost": {
+          "Amount": "84.50",
+          "Unit": "USD"
+        }
+      }
+    },
+    {
+      "TimePeriod": {
+        "Start": "2026-03-01",
+        "End": "2026-03-24"
+      },
+      "Total": {
+        "UnblendedCost": {
+          "Amount": "115.50",
+          "Unit": "USD"
+        }
+      }
+    }
+  ],
+  "bucketCount": 2,
+  "windowDays": 30,
+  "totalAmount": 200.0,
+  "averageDailyAmount": 6.67,
+  "unit": "USD"
+}

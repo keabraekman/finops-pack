@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "monthly_low_usd": 18.4,
+    "monthly_high_usd": 18.4,
+    "annual_low_usd": 220.8,
+    "annual_high_usd": 220.8
+  },
+  {
+    "monthly_low_usd": 42.5,
+    "monthly_high_usd": 42.5,
+    "annual_low_usd": 510.0,
+    "annual_high_usd": 510.0
+  },
+  {
+    "monthly_low_usd": 67.8,
+    "monthly_high_usd": 67.8,
+    "annual_low_usd": 813.6,
+    "annual_high_usd": 813.6
+  }
+]
