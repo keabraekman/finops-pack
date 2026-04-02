@@ -24,6 +24,7 @@ def test_load_config_returns_defaults_when_missing(
     assert cfg.rate_limit_safe_mode is False
     assert cfg.output_dir == "output"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.report_mode == "lead_magnet"
     assert cfg.client_id is None
     assert cfg.report_bucket is None
     assert cfg.report_retention_days == 7
@@ -55,6 +56,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
                 "rate_limit_safe_mode: true",
                 "output_dir: reports",
                 "demo_fixture_dir: demo/fixtures",
+                "report_mode: technical",
                 "client_id: acme-prod",
                 "report_bucket: s3://finops-pack-reports",
                 "report_retention_days: 14",
@@ -92,6 +94,7 @@ def test_load_config_from_yaml(tmp_path: Path) -> None:
     assert cfg.rate_limit_safe_mode is True
     assert cfg.output_dir == "reports"
     assert cfg.demo_fixture_dir == "demo/fixtures"
+    assert cfg.report_mode == "technical"
     assert cfg.client_id == "acme-prod"
     assert cfg.report_bucket == "finops-pack-reports"
     assert cfg.report_retention_days == 14
@@ -118,6 +121,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         rate_limit_safe_mode=False,
         output_dir="from-file-output",
         demo_fixture_dir="demo/fixtures",
+        report_mode="lead_magnet",
         client_id="from-file-client",
         report_bucket="from-file-bucket",
         report_retention_days=7,
@@ -138,6 +142,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
         enable_ce_savings_plan_fallback=True,
         rate_limit_safe_mode=True,
         output_dir="from-cli-output",
+        report_mode="technical",
         client_id="from-cli-client",
         report_bucket="s3://from-cli-bucket",
         report_retention_days=14,
@@ -155,6 +160,7 @@ def test_merge_run_config_prefers_cli_values() -> None:
     assert merged.enable_ce_savings_plan_fallback is True
     assert merged.rate_limit_safe_mode is True
     assert merged.output_dir == "from-cli-output"
+    assert merged.report_mode == "technical"
     assert merged.client_id == "from-cli-client"
     assert merged.report_bucket == "from-cli-bucket"
     assert merged.report_retention_days == 14

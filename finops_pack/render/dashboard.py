@@ -12,9 +12,14 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from finops_pack.analyzers.action_opportunities import (
+    build_action_opportunities,
+    summarize_actions_by_bucket,
+)
 from finops_pack.models import (
     AccessReport,
     AccountMapEntry,
+    ActionOpportunity,
     NormalizedRecommendation,
     SpendBaseline,
 )
@@ -39,6 +44,7 @@ ENVIRONMENT_LABELS = {
     "nonprod": "Non-Prod",
     "unknown": "Needs Review",
 }
+BUCKET_ORDER = ["Stop waste", "Rightsize", "Buy discounts", "Storage cleanup"]
 
 
 def _group_accounts(account_map: list[AccountMapEntry]) -> dict[str, list[AccountMapEntry]]:
@@ -222,6 +228,8 @@ def _build_spend_baseline_context(
     ]
 
     return {
+        "total_amount": spend_baseline.total_amount,
+        "unit": spend_baseline.unit,
         "window_display": _format_period_display(
             spend_baseline.window_start,
             spend_baseline.window_end,
@@ -767,6 +775,124 @@ def _build_savings_by_lever_context(
     return rows or None
 
 
+def _build_action_rows(actions: Sequence[ActionOpportunity] | None) -> list[dict[str, Any]]:
+    """Flatten ranked actions into render-friendly rows."""
+    rows: list[dict[str, Any]] = []
+    for action in actions or []:
+        rows.append(
+            {
+                "action_id": action.action_id,
+                "bucket": action.bucket,
+                "action_label": action.action_label,
+                "monthly_savings": action.monthly_savings,
+                "monthly_savings_display": (
+                    f"{_format_currency(action.monthly_savings, 'USD')} / month"
+                ),
+                "risk": action.risk,
+                "risk_label": action.risk.title(),
+                "effort": action.effort,
+                "effort_label": action.effort.title(),
+                "confidence": action.confidence,
+                "confidence_label": action.confidence.title(),
+                "source_label": action.source_label,
+                "why_it_matters": action.why_it_matters,
+                "what_to_do_first": action.what_to_do_first,
+                "evidence_summary": action.evidence_summary,
+                "opportunity_count": action.opportunity_count,
+                "account_names": action.account_names,
+                "supporting_items": list(action.supporting_items),
+            }
+        )
+    return rows
+
+
+def _build_action_context(
+    action_opportunities: Sequence[ActionOpportunity] | None,
+    *,
+    spend_baseline_context: dict[str, Any] | None,
+    comparison_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build ranked owner-facing action context for both report modes."""
+    action_rows = _build_action_rows(action_opportunities)
+    total_monthly_savings = round(
+        sum(row["monthly_savings"] for row in action_rows),
+        2,
+    )
+    total_spend = (
+        float(spend_baseline_context["total_amount"])
+        if spend_baseline_context is not None
+        and isinstance(spend_baseline_context.get("total_amount"), (int, float))
+        else None
+    )
+    recoverable_percentage = (
+        round((total_monthly_savings / total_spend) * 100, 1)
+        if total_spend and total_spend > 0
+        else None
+    )
+
+    bucket_summaries = summarize_actions_by_bucket(action_opportunities or [])
+    bucket_details: list[dict[str, Any]] = []
+    for bucket_name in BUCKET_ORDER:
+        detail_actions = [row for row in action_rows if row["bucket"] == bucket_name]
+        if not detail_actions:
+            continue
+        bucket_summary = next(
+            (summary for summary in bucket_summaries if summary["bucket"] == bucket_name),
+            None,
+        )
+        bucket_total_display = (
+            bucket_summary["monthly_savings_display"]
+            if bucket_summary is not None
+            else (
+                f"{_format_currency(sum(row['monthly_savings'] for row in detail_actions), 'USD')}"
+                " / month"
+            )
+        )
+        bucket_details.append(
+            {
+                "bucket": bucket_name,
+                "monthly_savings_display": bucket_total_display,
+                "opportunity_count": (
+                    bucket_summary["opportunity_count"] if bucket_summary is not None else 0
+                ),
+                "summary": (
+                    bucket_summary["summary"]
+                    if bucket_summary is not None
+                    else detail_actions[0]["why_it_matters"]
+                ),
+                "actions": detail_actions[:3],
+            }
+        )
+
+    return {
+        "has_actions": bool(action_rows),
+        "total_monthly_savings": total_monthly_savings,
+        "total_monthly_savings_display": _format_currency(total_monthly_savings, "USD"),
+        "current_spend_display": (
+            spend_baseline_context["total_spend_display"]
+            if spend_baseline_context is not None
+            and isinstance(spend_baseline_context.get("total_spend_display"), str)
+            else "Unavailable"
+        ),
+        "recoverable_percentage_display": (
+            f"{recoverable_percentage:.1f}%"
+            if recoverable_percentage is not None
+            else "n/a"
+        ),
+        "top_actions": action_rows[:3],
+        "priority_actions": [
+            {
+                **row,
+                "priority": index,
+            }
+            for index, row in enumerate(action_rows[:5], start=1)
+        ],
+        "bucket_summaries": bucket_summaries,
+        "bucket_details": bucket_details,
+        "comparison_context": comparison_context,
+    }
+
+
 def build_dashboard_download_links(
     dashboard_path: str | Path,
     download_targets: Sequence[tuple[str, str, str | Path]],
@@ -801,6 +927,7 @@ def render_dashboard_html(
     *,
     title: str = "FinOps Pack Dashboard",
     subtitle: str = "AWS Organizations account inventory and environment classification.",
+    report_mode: str = "lead_magnet",
     stylesheet_path: str | None = None,
     privacy_context: dict[str, str] | None = None,
     comparison_context: dict[str, Any] | None = None,
@@ -815,6 +942,7 @@ def render_dashboard_html(
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    action_opportunities: Sequence[ActionOpportunity] | None = None,
     download_links: Sequence[dict[str, str]] | None = None,
 ) -> str:
     """Render the dashboard HTML for account inventory."""
@@ -822,7 +950,12 @@ def render_dashboard_html(
         loader=FileSystemLoader(TEMPLATE_DIR),
         autoescape=select_autoescape(["html", "xml"]),
     )
-    template = environment.get_template("report.html.j2")
+    template_name = (
+        "report_lead_magnet.html.j2"
+        if report_mode == "lead_magnet"
+        else "report.html.j2"
+    )
+    template = environment.get_template(template_name)
     grouped = _group_accounts(account_map)
     recommendation_list = list(recommendations or [])
     spend_baseline_context = _build_spend_baseline_context(
@@ -836,10 +969,25 @@ def render_dashboard_html(
         access_report,
         has_coh_recommendations=bool(recommendation_list),
     )
+    resolved_action_opportunities = (
+        list(action_opportunities)
+        if action_opportunities is not None
+        else build_action_opportunities(
+            account_map=account_map,
+            recommendations=recommendation_list,
+            schedule_recommendations=schedule_recommendations,
+        )
+    )
+    action_context = _build_action_context(
+        resolved_action_opportunities,
+        spend_baseline_context=spend_baseline_context,
+        comparison_context=comparison_context,
+    )
 
     return template.render(
         title=title,
         subtitle=subtitle,
+        report_mode=report_mode,
         stylesheet_path=stylesheet_path,
         privacy_context=privacy_context or _default_privacy_context(),
         generated_at=generated_at or datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -847,6 +995,7 @@ def render_dashboard_html(
         run_id=run_id,
         account_id=account_id,
         region=region,
+        action_context=action_context,
         executive_summary=_build_executive_summary(account_map, access_report),
         executive_summary_cards=_build_executive_summary_cards(
             account_map,
@@ -870,6 +1019,7 @@ def render_dashboard_html(
         findings=[],
         recommendations=[],
         access_report=access_report,
+        comparison_context=comparison_context,
         coh_context=coh_context,
         schedule_context=schedule_context,
         prerequisites_context=prerequisites_context,
@@ -886,6 +1036,7 @@ def write_dashboard(
     *,
     title: str = "FinOps Pack Dashboard",
     subtitle: str = "AWS Organizations account inventory and environment classification.",
+    report_mode: str = "lead_magnet",
     stylesheet_path: str | None = None,
     privacy_context: dict[str, str] | None = None,
     comparison_context: dict[str, Any] | None = None,
@@ -900,6 +1051,7 @@ def write_dashboard(
     coh_summary: dict[str, Any] | None = None,
     recommendations: Sequence[NormalizedRecommendation] | None = None,
     schedule_recommendations: Sequence[dict[str, Any]] | None = None,
+    action_opportunities: Sequence[ActionOpportunity] | None = None,
     download_links: Sequence[dict[str, str]] | None = None,
 ) -> Path:
     """Write the account dashboard HTML and its stylesheet."""
@@ -910,6 +1062,7 @@ def write_dashboard(
             account_map,
             title=title,
             subtitle=subtitle,
+            report_mode=report_mode,
             stylesheet_path=stylesheet_path,
             privacy_context=privacy_context,
             comparison_context=comparison_context,
@@ -924,6 +1077,7 @@ def write_dashboard(
             coh_summary=coh_summary,
             recommendations=recommendations,
             schedule_recommendations=schedule_recommendations,
+            action_opportunities=action_opportunities,
             download_links=download_links,
         ),
         encoding="utf-8",

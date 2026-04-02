@@ -34,6 +34,16 @@ class SavingsRange:
             raise ValueError("annual_high_usd must be >= annual_low_usd")
 
 
+ActionBucket = Literal[
+    "Stop waste",
+    "Rightsize",
+    "Buy discounts",
+    "Storage cleanup",
+]
+ActionPriority = Literal["low", "medium", "high"]
+ActionSourceLabel = Literal["Native finops-pack", "AWS COH", "CE fallback"]
+
+
 @dataclass(config=ConfigDict(extra="forbid"))
 class Resource:
     provider: Literal["aws"]
@@ -143,6 +153,34 @@ class Recommendation:
     effort: Literal["low", "medium", "high"] = "low"
     risk: Literal["low", "medium", "high"] = "low"
     savings: SavingsRange | None = None
+
+
+@dataclass(config=ConfigDict(extra="forbid"))
+class ActionOpportunity:
+    bucket: ActionBucket
+    action_label: str
+    monthly_savings: float = Field(ge=0)
+    risk: ActionPriority = "low"
+    effort: ActionPriority = "low"
+    confidence: ActionPriority = "medium"
+    source_label: ActionSourceLabel = "Native finops-pack"
+    why_it_matters: str = ""
+    what_to_do_first: str = ""
+    evidence_summary: str = ""
+    action_id: str | None = None
+    opportunity_count: int = Field(default=1, ge=1)
+    account_names: list[str] = Field(default_factory=list)
+    supporting_items: list[dict[str, Any]] = Field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.action_id is None:
+            digest = hashlib.sha256(
+                (
+                    f"{self.bucket}|{self.action_label}|{self.source_label}|"
+                    f"{self.opportunity_count}"
+                ).encode()
+            ).hexdigest()
+            self.action_id = f"action-{digest}"
 
 
 @dataclass(config=ConfigDict(extra="forbid"))

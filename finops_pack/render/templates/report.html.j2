@@ -98,6 +98,51 @@
         </div>
       </section>
 
+      {% if action_context and action_context.priority_actions %}
+        <section class="section">
+          <h2>Priority Actions</h2>
+          <p class="section-note">Top business actions ranked by savings, confidence, effort, risk, and owner relevance.</p>
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Priority</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Bucket</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Risk</th>
+                    <th scope="col">Effort</th>
+                    <th scope="col">Confidence</th>
+                    <th scope="col" class="numeric-cell">Monthly Savings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for action in action_context.priority_actions %}
+                    <tr>
+                      <td class="numeric-cell">{{ action.priority }}</td>
+                      <td>
+                        <div class="table-primary">{{ action.action_label }}</div>
+                        <div class="table-secondary">{{ action.why_it_matters }}</div>
+                        {% if action.what_to_do_first %}
+                          <div class="table-secondary"><strong>Start with:</strong> {{ action.what_to_do_first }}</div>
+                        {% endif %}
+                      </td>
+                      <td>{{ action.bucket }}</td>
+                      <td>{{ action.source_label }}</td>
+                      <td><span class="badge badge-{{ action.risk }}">{{ action.risk_label }}</span></td>
+                      <td><span class="badge badge-{{ action.effort }}">{{ action.effort_label }}</span></td>
+                      <td><span class="badge badge-{{ action.confidence }}">{{ action.confidence_label }}</span></td>
+                      <td class="numeric-cell">{{ action.monthly_savings_display }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
       {% if savings_by_lever %}
         <section class="section">
           <h2>Savings by Lever</h2>

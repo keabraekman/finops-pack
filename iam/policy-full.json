@@ -6,7 +6,9 @@
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeInstances",
-        "organizations:ListAccounts"
+        "ec2:DescribeVolumes",
+        "organizations:ListAccounts",
+        "rds:DescribeDBInstances"
       ],
       "Resource": "*"
     },

@@ -307,6 +307,28 @@ def test_handle_run_enables_cost_optimization_hub(
             "errors": [],
         }
     )
+    collect_ebs_inventory = Mock(
+        return_value={
+            "operation": "DescribeVolumes",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
+    collect_rds_inventory = Mock(
+        return_value={
+            "operation": "DescribeDBInstances",
+            "regions": ["us-west-2", "us-east-1"],
+            "accountCount": 1,
+            "itemCount": 0,
+            "errorCount": 0,
+            "items": [],
+            "errors": [],
+        }
+    )
     build_schedule_recommendation_rows = Mock(
         return_value=[
             {
@@ -458,6 +480,8 @@ def test_handle_run_enables_cost_optimization_hub(
     monkeypatch.setattr(cli, "collect_spend_baseline", collect_spend_baseline)
     monkeypatch.setattr(cli, "collect_resource_daily_costs", collect_resource_daily_costs)
     monkeypatch.setattr(cli, "collect_ec2_inventory", collect_ec2_inventory)
+    monkeypatch.setattr(cli, "collect_ebs_inventory", collect_ebs_inventory)
+    monkeypatch.setattr(cli, "collect_rds_inventory", collect_rds_inventory)
     monkeypatch.setattr(
         cli,
         "build_schedule_recommendation_rows",
@@ -578,6 +602,7 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "enable_ce_rightsizing_fallback=False" in output
     assert "enable_ce_savings_plan_fallback=False" in output
     assert "rate_limit_safe_mode=True" in output
+    assert "report_mode=lead_magnet" in output
     assert "client_id=acme-prod" in output
     assert "run_id=20260401T010203Z-test" in output
     assert "report_bucket=report-bucket" in output
@@ -614,6 +639,7 @@ def test_handle_run_enables_cost_optimization_hub(
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary["run"]["client_id"] == "acme-prod"
     assert summary["run"]["run_id"] == "20260401T010203Z-test"
+    assert summary["run"]["report_mode"] == "lead_magnet"
     assert summary["run"]["rate_limit_safe_mode"] is True
     assert summary["run"]["schedule"]["timezone"] == "America/New_York"
     assert summary["run"]["schedule"]["business_hours"]["start_hour"] == 8
@@ -624,6 +650,8 @@ def test_handle_run_enables_cost_optimization_hub(
     assert summary["schedule_recommendations"]["recommendation_count"] == 1
     assert summary["schedule_recommendations"]["estimated_count"] == 1
     assert summary["schedule_recommendations"]["needs_ce_resource_level_opt_in_count"] == 0
+    assert summary["actions"]["count"] == 1
+    assert summary["actions"]["total_monthly_savings"] == 42.5
     assert summary["ce"]["spend_baseline_total"] == 200.0
     assert summary["ce"]["resource_daily_collected"] is True
     assert summary["ce"]["resource_daily_group_count"] == 1
@@ -682,20 +710,15 @@ def test_handle_run_enables_cost_optimization_hub(
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
     assert "Access Report" in dashboard_html
     assert "Region Coverage" in dashboard_html
-    assert "Spend Baseline" in dashboard_html
+    assert "Top 3 actions" in dashboard_html
+    assert "Priority Actions" in dashboard_html
+    assert "Savings By Bucket" in dashboard_html
+    assert "Technical Appendix" in dashboard_html
     assert "Account Map" in dashboard_html
-    assert "Top Opportunities" in dashboard_html
-    assert "Savings by Category" in dashboard_html
-    assert "Savings by Account" in dashboard_html
-    assert "Prod vs Non-Prod Savings" in dashboard_html
-    assert "730-hour monthly normalization" in dashboard_html
-    assert "Recommendation IDs can expire after about 24 hours" in dashboard_html
     assert "FinOps Pack Dashboard - acme-prod" in dashboard_html
     assert "20260401T010203Z-test" in dashboard_html
     assert "prod-core" in dashboard_html
-    assert "Rightsizing / Idle Deletion" in dashboard_html
-    assert "Savings by Lever" in dashboard_html
-    assert "Savings Change Since Last Report" in dashboard_html
+    assert "Rightsize 1 EC2 instance" in dashboard_html
     assert "+$12.50 / month" in dashboard_html
     assert "Download Files" in dashboard_html
     assert "Privacy + Retention" in dashboard_html
@@ -703,6 +726,7 @@ def test_handle_run_enables_cost_optimization_hub(
     preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
     assert "FinOps Pack Dashboard - acme-prod" in preview_html
     assert "Privacy + Retention" in preview_html
+    assert "Priority Actions" in preview_html
     assert "Download Files" in preview_html
     assert 'href="report-bundle.zip"' in preview_html
     assert 'href="downloads/accounts.json"' in preview_html

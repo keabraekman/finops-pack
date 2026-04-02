@@ -12,7 +12,13 @@ from finops_pack.analyzers.account_classification import classify_accounts
 from finops_pack.collectors.organizations import load_account_records
 from finops_pack.config import AppConfig, BusinessHours, ScheduleConfig
 from finops_pack.export_schema import validate_export_recommendations_payload
-from finops_pack.models import AccessReport, AccountMapEntry, RegionCoverage, SpendBaseline
+from finops_pack.models import (
+    AccessReport,
+    AccountMapEntry,
+    ActionOpportunity,
+    RegionCoverage,
+    SpendBaseline,
+)
 
 
 @dataclass
@@ -35,6 +41,7 @@ class DemoFixtureBundle:
     coh_summary: dict[str, Any] | None
     recommendations: list[Any]
     schedule_recommendations: list[dict[str, Any]]
+    native_actions: list[ActionOpportunity]
 
 
 def _load_optional_json(path: Path) -> Any:
@@ -180,6 +187,15 @@ def _load_schedule_recommendations(fixture_dir: Path) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def _load_native_actions(fixture_dir: Path) -> list[ActionOpportunity]:
+    raw = _load_optional_json(fixture_dir / "native_actions.json")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("native_actions.json must contain a top-level array.")
+    return [ActionOpportunity(**item) for item in raw if isinstance(item, dict)]
+
+
 def _load_schedule(
     summary_payload: dict[str, Any] | None,
     fallback: ScheduleConfig,
@@ -289,4 +305,5 @@ def load_demo_fixture_bundle(
         coh_summary=_load_optional_json(fixture_path / "coh_summaries.json"),
         recommendations=_load_recommendations(fixture_path),
         schedule_recommendations=_load_schedule_recommendations(fixture_path),
+        native_actions=_load_native_actions(fixture_path),
     )

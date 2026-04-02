@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml  # type: ignore[import-untyped]
@@ -12,6 +12,8 @@ import yaml  # type: ignore[import-untyped]
 DEFAULT_CONFIG_FILES = ("config.yaml", "config.yml")
 DEFAULT_BUSINESS_DAYS = ["mon", "tue", "wed", "thu", "fri"]
 VALID_SCHEDULE_DAYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+ReportMode = Literal["lead_magnet", "technical"]
+VALID_REPORT_MODES = {"lead_magnet", "technical"}
 
 
 @dataclass
@@ -74,6 +76,7 @@ class AppConfig:
     rate_limit_safe_mode: bool = False
     output_dir: str = "output"
     demo_fixture_dir: str = "demo/fixtures"
+    report_mode: ReportMode = "lead_magnet"
     client_id: str | None = None
     report_bucket: str | None = None
     report_retention_days: int = 7
@@ -143,6 +146,20 @@ def _normalize_positive_int(value: Any, *, key: str) -> int:
     if value < 1:
         raise ValueError(f"{key} must be greater than 0.")
     return value
+
+
+def _normalize_report_mode(value: Any) -> ReportMode:
+    """Normalize the configured report mode."""
+    if value is None:
+        return "lead_magnet"
+    if not isinstance(value, str):
+        raise ValueError("report_mode must be a string.")
+    normalized = value.strip()
+    if normalized not in VALID_REPORT_MODES:
+        raise ValueError(
+            "report_mode must be one of: " + ", ".join(sorted(VALID_REPORT_MODES))
+        )
+    return normalized  # type: ignore[return-value]
 
 
 def _normalize_business_hours(value: Any) -> BusinessHours:
@@ -255,6 +272,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         "rate_limit_safe_mode",
         "output_dir",
         "demo_fixture_dir",
+        "report_mode",
         "client_id",
         "report_bucket",
         "report_client_id",
@@ -298,6 +316,7 @@ def _normalize_keys(data: dict[str, Any]) -> dict[str, Any]:
         normalized.get("report_retention_days", 7),
         key="report_retention_days",
     )
+    normalized["report_mode"] = _normalize_report_mode(normalized.get("report_mode"))
     normalized["schedule"] = _normalize_schedule(normalized.get("schedule"))
     return normalized
 
@@ -352,6 +371,7 @@ def merge_run_config(
     client_id: str | None,
     report_bucket: str | None,
     report_retention_days: int | None,
+    report_mode: str | None = None,
 ) -> AppConfig:
     """Merge CLI args over file config for the run command."""
     merged_region = region if region is not None else file_config.region
@@ -380,6 +400,11 @@ def merge_run_config(
             rate_limit_safe_mode=rate_limit_safe_mode or file_config.rate_limit_safe_mode,
             output_dir=output_dir if output_dir is not None else file_config.output_dir,
             demo_fixture_dir=file_config.demo_fixture_dir,
+            report_mode=(
+                _normalize_report_mode(report_mode)
+                if report_mode is not None
+                else file_config.report_mode
+            ),
             client_id=(
                 _normalize_optional_string(client_id, key="client_id")
                 if client_id is not None

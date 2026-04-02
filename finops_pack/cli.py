@@ -13,6 +13,9 @@ from typing import Any
 from botocore.exceptions import BotoCoreError, ClientError
 
 from finops_pack.analyzers.account_classification import classify_accounts
+from finops_pack.analyzers.action_opportunities import build_action_opportunities
+from finops_pack.analyzers.native_ebs import build_native_ebs_actions
+from finops_pack.analyzers.rds_schedule import build_rds_schedule_actions
 from finops_pack.analyzers.schedule_recommendations import (
     ESTIMATED_STATUS,
     NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS,
@@ -41,8 +44,10 @@ from finops_pack.aws.cost_optimization_hub import (
     list_recommendations,
     normalize_recommendation,
 )
+from finops_pack.collectors.ebs import collect_ebs_inventory
 from finops_pack.collectors.ec2 import collect_ec2_inventory
 from finops_pack.collectors.organizations import list_accounts
+from finops_pack.collectors.rds import collect_rds_inventory
 from finops_pack.config import ScheduleConfig, load_config, merge_run_config, resolve_regions
 from finops_pack.demo_fixtures import load_demo_fixture_bundle
 from finops_pack.export_schema import write_export_recommendations_schema
@@ -52,6 +57,7 @@ from finops_pack.models import (
     AccessReport,
     AccountMapEntry,
     AccountRecord,
+    ActionOpportunity,
     ModuleStatus,
     NormalizedRecommendation,
     RegionCoverage,
@@ -684,6 +690,74 @@ def _print_ec2_inventory_summary(inventory_path: Path, inventory_snapshot: dict[
     print(f"ec2_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
 
 
+def _collect_ebs_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort EBS inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "ebs_inventory.json"
+    inventory_snapshot = collect_ebs_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_ebs_inventory_summary(inventory_path: Path, inventory_snapshot: dict[str, Any]) -> None:
+    """Emit EBS inventory output details to stdout."""
+    print(f"ebs_inventory_path={inventory_path}")
+    print(f"ebs_inventory_volume_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"ebs_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
+def _collect_rds_inventory_snapshot(
+    session: Any,
+    *,
+    output_dir: Path,
+    account_records: list[AccountRecord],
+    regions: list[str],
+    role_arn: str,
+    external_id: str | None,
+    session_name: str,
+    current_account_id: str | None,
+) -> tuple[Path, dict[str, Any]]:
+    """Collect and persist best-effort RDS inventory."""
+    raw_dir = _raw_output_dir(output_dir)
+    inventory_path = raw_dir / "rds_inventory.json"
+    inventory_snapshot = collect_rds_inventory(
+        session,
+        account_records=account_records,
+        regions=regions,
+        role_arn=role_arn,
+        external_id=external_id,
+        session_name=session_name,
+        current_account_id=current_account_id,
+    )
+    _write_json_snapshot(inventory_path, inventory_snapshot)
+    return inventory_path, inventory_snapshot
+
+
+def _print_rds_inventory_summary(inventory_path: Path, inventory_snapshot: dict[str, Any]) -> None:
+    """Emit RDS inventory output details to stdout."""
+    print(f"rds_inventory_path={inventory_path}")
+    print(f"rds_inventory_instance_count={inventory_snapshot.get('itemCount', 0)}")
+    print(f"rds_inventory_error_count={inventory_snapshot.get('errorCount', 0)}")
+
+
 def _merge_module_collection_status(
     access_report: AccessReport,
     *,
@@ -1097,11 +1171,14 @@ def _build_summary_payload(
     client_id: str | None,
     run_id: str,
     region: str,
+    report_mode: str,
     schedule: ScheduleConfig,
     rate_limit_safe_mode: bool,
     account_map: list[AccountMapEntry],
     access_report: AccessReport,
     ec2_inventory_snapshot: dict[str, Any] | None = None,
+    ebs_inventory_snapshot: dict[str, Any] | None = None,
+    rds_inventory_snapshot: dict[str, Any] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
     ce_rightsizing_snapshot: dict[str, Any] | None = None,
     ce_savings_plan_snapshot: dict[str, Any] | None = None,
@@ -1110,6 +1187,7 @@ def _build_summary_payload(
     summaries_snapshot: dict[str, Any] | None = None,
     recommendations_snapshot: dict[str, Any] | None = None,
     normalized_recommendations: list[NormalizedRecommendation] | None = None,
+    action_opportunities: list[ActionOpportunity] | None = None,
     detail_errors: list[str] | None = None,
     comparison: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -1132,6 +1210,11 @@ def _build_summary_payload(
         for row in schedule_recommendation_list
         if row.get("estimationStatus") == NEEDS_CE_RESOURCE_LEVEL_OPT_IN_STATUS
     )
+    action_opportunity_list = action_opportunities or []
+    total_action_monthly_savings = round(
+        sum(item.monthly_savings for item in action_opportunity_list),
+        2,
+    )
 
     return {
         "run": {
@@ -1140,6 +1223,7 @@ def _build_summary_payload(
             "run_id": run_id,
             "account_id": access_report.account_id,
             "region": region,
+            "report_mode": report_mode,
             "schedule": {
                 "timezone": schedule.timezone,
                 "business_hours": {
@@ -1166,11 +1250,28 @@ def _build_summary_payload(
             "ec2_inventory_error_count": (
                 0 if ec2_inventory_snapshot is None else ec2_inventory_snapshot.get("errorCount", 0)
             ),
+            "ebs_volume_count": (
+                0 if ebs_inventory_snapshot is None else ebs_inventory_snapshot.get("itemCount", 0)
+            ),
+            "ebs_inventory_error_count": (
+                0 if ebs_inventory_snapshot is None else ebs_inventory_snapshot.get("errorCount", 0)
+            ),
+            "rds_instance_count": (
+                0 if rds_inventory_snapshot is None else rds_inventory_snapshot.get("itemCount", 0)
+            ),
+            "rds_inventory_error_count": (
+                0 if rds_inventory_snapshot is None else rds_inventory_snapshot.get("errorCount", 0)
+            ),
         },
         "schedule_recommendations": {
             "recommendation_count": len(schedule_recommendation_list),
             "estimated_count": schedule_estimated_count,
             "needs_ce_resource_level_opt_in_count": schedule_needs_opt_in_count,
+        },
+        "actions": {
+            "count": len(action_opportunity_list),
+            "total_monthly_savings": total_action_monthly_savings,
+            "top_actions": [item.action_label for item in action_opportunity_list[:3]],
         },
         "fallbacks": {
             "ce_rightsizing_recommendation_count": (
@@ -1293,6 +1394,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory where generated reports and JSON artifacts are written.",
     )
     run_parser.add_argument(
+        "--report-mode",
+        choices=("lead_magnet", "technical"),
+        help="Report layout mode to render (default: lead_magnet).",
+    )
+    run_parser.add_argument(
         "--report-bucket",
         help="Optional S3 bucket where report artifacts are published.",
     )
@@ -1365,6 +1471,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         help="Directory where generated demo artifacts are written.",
     )
+    demo_parser.add_argument(
+        "--report-mode",
+        choices=("lead_magnet", "technical"),
+        help="Report layout mode to render (default: lead_magnet).",
+    )
 
     policy_parser = subparsers.add_parser(
         "iam-policy",
@@ -1389,6 +1500,7 @@ def _write_account_outputs(
     *,
     output_dir: Path,
     title: str,
+    report_mode: str,
     generated_at: str,
     client_id: str | None,
     run_id: str,
@@ -1400,6 +1512,7 @@ def _write_account_outputs(
     coh_summary: dict[str, Any] | None = None,
     recommendations: list[NormalizedRecommendation] | None = None,
     schedule_recommendations: list[dict[str, Any]] | None = None,
+    action_opportunities: list[ActionOpportunity] | None = None,
     privacy_context: dict[str, str] | None = None,
     comparison_context: dict[str, str] | None = None,
     download_links: list[dict[str, str]] | None = None,
@@ -1419,6 +1532,7 @@ def _write_account_outputs(
         account_map,
         dashboard_path,
         title=title,
+        report_mode=report_mode,
         generated_at=generated_at,
         client_id=client_id,
         run_id=run_id,
@@ -1430,6 +1544,7 @@ def _write_account_outputs(
         coh_summary=coh_summary,
         recommendations=recommendations,
         schedule_recommendations=schedule_recommendations,
+        action_opportunities=action_opportunities,
         privacy_context=privacy_context,
         comparison_context=comparison_context,
         download_links=download_links,
@@ -1617,15 +1732,25 @@ def _build_summary_comparison_context(
 ) -> dict[str, Any]:
     """Build comparison metadata between the current and previous summaries."""
     current_savings = float(
-        current_summary.get("coh", {}).get("normalized_estimated_monthly_savings") or 0.0
+        current_summary.get("actions", {}).get("total_monthly_savings")
+        or current_summary.get("coh", {}).get("normalized_estimated_monthly_savings")
+        or 0.0
     )
     previous_savings = float(
-        previous_summary.get("coh", {}).get("normalized_estimated_monthly_savings") or 0.0
+        previous_summary.get("actions", {}).get("total_monthly_savings")
+        or previous_summary.get("coh", {}).get("normalized_estimated_monthly_savings")
+        or 0.0
     )
     savings_delta = round(current_savings - previous_savings, 2)
     recommendation_delta = int(
-        current_summary.get("coh", {}).get("normalized_recommendation_count") or 0
-    ) - int(previous_summary.get("coh", {}).get("normalized_recommendation_count") or 0)
+        current_summary.get("actions", {}).get("count")
+        or current_summary.get("coh", {}).get("normalized_recommendation_count")
+        or 0
+    ) - int(
+        previous_summary.get("actions", {}).get("count")
+        or previous_summary.get("coh", {}).get("normalized_recommendation_count")
+        or 0
+    )
     account_delta = int(current_summary.get("accounts", {}).get("total") or 0) - int(
         previous_summary.get("accounts", {}).get("total") or 0
     )
@@ -1647,7 +1772,7 @@ def _build_summary_comparison_context(
         "account_total_change": account_delta,
         "savings_change_display": f"{_format_signed_currency(savings_delta)} / month",
         "summary": (
-            f"vs {previous_label} · {_format_signed_number(recommendation_delta)} recommendations"
+            f"vs {previous_label} · {_format_signed_number(recommendation_delta)} actions"
             f" · {_format_signed_number(account_delta)} accounts"
         ),
     }
@@ -1669,6 +1794,7 @@ def handle_run(args: argparse.Namespace) -> int:
         enable_ce_rightsizing_fallback=args.enable_ce_rightsizing_fallback,
         enable_ce_savings_plan_fallback=args.enable_ce_savings_plan_fallback,
         output_dir=args.output_dir,
+        report_mode=getattr(args, "report_mode", None),
         client_id=args.client_id,
         report_bucket=args.report_bucket,
         report_retention_days=args.report_retention_days,
@@ -1706,6 +1832,7 @@ def handle_run(args: argparse.Namespace) -> int:
     print(f"enable_ce_rightsizing_fallback={resolved.enable_ce_rightsizing_fallback}")
     print(f"enable_ce_savings_plan_fallback={resolved.enable_ce_savings_plan_fallback}")
     print(f"rate_limit_safe_mode={resolved.rate_limit_safe_mode}")
+    print(f"report_mode={resolved.report_mode}")
     if resolved.client_id:
         print(f"client_id={resolved.client_id}")
     print(f"run_id={run_id}")
@@ -1905,6 +2032,42 @@ def handle_run(args: argparse.Namespace) -> int:
         prod_account_ids=resolved.prod_account_ids,
         nonprod_account_ids=resolved.nonprod_account_ids,
     )
+    ebs_inventory_path, ebs_inventory_snapshot = _collect_ebs_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    rds_inventory_path, rds_inventory_snapshot = _collect_rds_inventory_snapshot(
+        session,
+        output_dir=output_dir,
+        account_records=account_records,
+        regions=region_coverage.regions,
+        role_arn=resolved.role_arn,
+        external_id=resolved.external_id,
+        session_name=resolved.session_name,
+        current_account_id=access_report.account_id,
+    )
+    _print_ebs_inventory_summary(ebs_inventory_path, ebs_inventory_snapshot)
+    _print_rds_inventory_summary(rds_inventory_path, rds_inventory_snapshot)
+    native_actions = [
+        *build_native_ebs_actions(ebs_inventory_snapshot),
+        *build_rds_schedule_actions(
+            rds_inventory_snapshot,
+            account_map=account_map,
+            schedule=resolved.schedule,
+        ),
+    ]
+    action_opportunities = build_action_opportunities(
+        account_map=account_map,
+        recommendations=coh_normalized_recommendations,
+        schedule_recommendations=schedule_recommendations,
+        native_actions=native_actions,
+    )
     account_output_label = (
         "AWS Organizations"
         if account_collection_error is None
@@ -1915,11 +2078,14 @@ def handle_run(args: argparse.Namespace) -> int:
         client_id=resolved.client_id,
         run_id=run_id,
         region=resolved.region,
+        report_mode=resolved.report_mode,
         schedule=resolved.schedule,
         rate_limit_safe_mode=resolved.rate_limit_safe_mode,
         account_map=account_map,
         access_report=access_report,
         ec2_inventory_snapshot=ec2_inventory_snapshot,
+        ebs_inventory_snapshot=ebs_inventory_snapshot,
+        rds_inventory_snapshot=rds_inventory_snapshot,
         schedule_recommendations=schedule_recommendations,
         ce_rightsizing_snapshot=ce_rightsizing_snapshot,
         ce_savings_plan_snapshot=ce_savings_plan_snapshot,
@@ -1928,6 +2094,7 @@ def handle_run(args: argparse.Namespace) -> int:
         summaries_snapshot=coh_summaries_snapshot,
         recommendations_snapshot=coh_recommendations_snapshot,
         normalized_recommendations=coh_normalized_recommendations,
+        action_opportunities=action_opportunities,
         detail_errors=coh_detail_errors,
     )
     comparison_context: dict[str, Any] | None = None
@@ -1975,6 +2142,7 @@ def handle_run(args: argparse.Namespace) -> int:
         account_map,
         output_dir=output_dir,
         title=report_title,
+        report_mode=resolved.report_mode,
         generated_at=run_generated_at,
         client_id=resolved.client_id,
         run_id=run_id,
@@ -1988,6 +2156,7 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
+        action_opportunities=action_opportunities,
         privacy_context=privacy_context,
         comparison_context=comparison_context,
         download_links=output_download_links,
@@ -2009,6 +2178,7 @@ def handle_run(args: argparse.Namespace) -> int:
     preview_html = render_dashboard_html(
         account_map,
         title=report_title,
+        report_mode=resolved.report_mode,
         generated_at=run_generated_at,
         client_id=resolved.client_id,
         run_id=run_id,
@@ -2022,6 +2192,7 @@ def handle_run(args: argparse.Namespace) -> int:
         coh_summary=coh_summaries_snapshot,
         recommendations=coh_normalized_recommendations,
         schedule_recommendations=schedule_recommendations,
+        action_opportunities=action_opportunities,
         privacy_context=privacy_context,
         comparison_context=comparison_context,
         download_links=preview_download_links,
@@ -2064,6 +2235,7 @@ def handle_run(args: argparse.Namespace) -> int:
             build_index_html=lambda download_links, stylesheet_path: render_dashboard_html(
                 account_map,
                 title=report_title,
+                report_mode=resolved.report_mode,
                 generated_at=run_generated_at,
                 client_id=resolved.client_id,
                 run_id=run_id,
@@ -2077,6 +2249,7 @@ def handle_run(args: argparse.Namespace) -> int:
                 coh_summary=coh_summaries_snapshot,
                 recommendations=coh_normalized_recommendations,
                 schedule_recommendations=schedule_recommendations,
+                action_opportunities=action_opportunities,
                 privacy_context=privacy_context,
                 comparison_context=comparison_context,
                 download_links=download_links,
@@ -2091,6 +2264,7 @@ def handle_run(args: argparse.Namespace) -> int:
 def handle_demo(args: argparse.Namespace) -> int:
     """Handle the demo subcommand."""
     file_config = load_config(args.config)
+    report_mode = getattr(args, "report_mode", None) or file_config.report_mode
     fixture_dir = Path(file_config.demo_fixture_dir)
     output_dir = Path(args.output_dir or file_config.output_dir)
     default_region_coverage = _build_region_coverage(resolve_regions(file_config))
@@ -2143,6 +2317,7 @@ def handle_demo(args: argparse.Namespace) -> int:
         client_id=fixture_bundle.client_id,
         run_id=fixture_bundle.run_id,
         region=fixture_bundle.region,
+        report_mode=report_mode,
         schedule=fixture_bundle.schedule,
         rate_limit_safe_mode=rate_limit_safe_mode,
         account_map=fixture_bundle.account_map,
@@ -2151,6 +2326,12 @@ def handle_demo(args: argparse.Namespace) -> int:
         spend_baseline=fixture_bundle.spend_baseline,
         summaries_snapshot=fixture_bundle.coh_summary,
         normalized_recommendations=fixture_bundle.recommendations,
+        action_opportunities=build_action_opportunities(
+            account_map=fixture_bundle.account_map,
+            recommendations=fixture_bundle.recommendations,
+            schedule_recommendations=fixture_bundle.schedule_recommendations,
+            native_actions=fixture_bundle.native_actions,
+        ),
         comparison=fixture_bundle.comparison_context,
     )
     summary_path = _write_summary_output(
@@ -2177,6 +2358,7 @@ def handle_demo(args: argparse.Namespace) -> int:
         fixture_bundle.account_map,
         output_dir=output_dir,
         title=report_title,
+        report_mode=report_mode,
         generated_at=fixture_bundle.generated_at,
         client_id=fixture_bundle.client_id,
         run_id=fixture_bundle.run_id,
@@ -2188,6 +2370,12 @@ def handle_demo(args: argparse.Namespace) -> int:
         coh_summary=fixture_bundle.coh_summary,
         recommendations=fixture_bundle.recommendations,
         schedule_recommendations=fixture_bundle.schedule_recommendations,
+        action_opportunities=build_action_opportunities(
+            account_map=fixture_bundle.account_map,
+            recommendations=fixture_bundle.recommendations,
+            schedule_recommendations=fixture_bundle.schedule_recommendations,
+            native_actions=fixture_bundle.native_actions,
+        ),
         privacy_context=privacy_context,
         comparison_context=fixture_bundle.comparison_context,
         download_links=output_download_links,
@@ -2208,6 +2396,7 @@ def handle_demo(args: argparse.Namespace) -> int:
     preview_html = render_dashboard_html(
         fixture_bundle.account_map,
         title=report_title,
+        report_mode=report_mode,
         generated_at=fixture_bundle.generated_at,
         client_id=fixture_bundle.client_id,
         run_id=fixture_bundle.run_id,
@@ -2219,6 +2408,12 @@ def handle_demo(args: argparse.Namespace) -> int:
         coh_summary=fixture_bundle.coh_summary,
         recommendations=fixture_bundle.recommendations,
         schedule_recommendations=fixture_bundle.schedule_recommendations,
+        action_opportunities=build_action_opportunities(
+            account_map=fixture_bundle.account_map,
+            recommendations=fixture_bundle.recommendations,
+            schedule_recommendations=fixture_bundle.schedule_recommendations,
+            native_actions=fixture_bundle.native_actions,
+        ),
         privacy_context=privacy_context,
         comparison_context=fixture_bundle.comparison_context,
         download_links=preview_download_links,
@@ -2245,6 +2440,7 @@ def handle_demo(args: argparse.Namespace) -> int:
     if fixture_bundle.client_id:
         print(f"client_id={fixture_bundle.client_id}")
     print(f"run_id={fixture_bundle.run_id}")
+    print(f"report_mode={report_mode}")
     _print_region_coverage(region_coverage)
     _print_schedule_config(fixture_bundle.schedule)
     _print_coh_export_summary(

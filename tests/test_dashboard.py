@@ -27,12 +27,16 @@ def _build_recommendation(
     account_id: str,
     monthly_savings: float,
     region: str = "us-east-1",
+    action_type: str = "Rightsize",
+    current_resource_type: str = "Ec2Instance",
 ) -> NormalizedRecommendation:
     return NormalizedRecommendation(
         recommendation_id=recommendation_id,
         category=category,
         account_id=account_id,
         region=region,
+        current_resource_type=current_resource_type,
+        action_type=action_type,
         estimated_monthly_savings=monthly_savings,
         currency_code="USD",
         recommendation=Recommendation(
@@ -70,6 +74,8 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
             category="commitment (SP/RI)",
             account_id="222222222222",
             monthly_savings=67.89,
+            action_type="PurchaseSavingsPlans",
+            current_resource_type="SavingsPlans",
         ),
         _build_recommendation(
             "rec-3",
@@ -78,6 +84,8 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
             category="rightsizing / idle deletion",
             account_id="333333333333",
             monthly_savings=10.11,
+            action_type="Delete",
+            current_resource_type="EbsVolume",
         ),
     ]
     schedule_recommendations = [
@@ -146,30 +154,23 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
         schedule_recommendations=schedule_recommendations,
     )
 
-    assert "Spend Baseline" in html
-    assert "Average Daily Spend" in html
+    assert "Current AWS spend" in html
+    assert "Estimated monthly savings" in html
+    assert "Savings as % of spend" in html
     assert "$201.45" in html
-    assert "Savings by Lever" in html
-    assert "Top Opportunities" in html
-    assert "Savings by Category" in html
-    assert "Savings by Account" in html
-    assert "Prod vs Non-Prod Savings" in html
-    assert "Rightsizing / Idle Deletion" in html
-    assert "$133.56" in html
-    assert "$123.45" in html
-    assert "$67.89" in html
-    assert "$10.11" in html
+    assert "Priority Actions" in html
+    assert "Savings By Bucket" in html
+    assert "Technical Appendix" in html
+    assert "Stop 1 non-prod EC2 instance off-hours" in html
+    assert "Buy 1 compute savings plan" in html
+    assert "Clean up or tune 1 EBS volume" in html
     assert "prod-core" in html
     assert "sandbox-apps" in html
     assert "Needs Review" in html
-    assert "Non-Prod Schedule Table" in html
-    assert "Schedule-Only Low Savings" in html
-    assert "Schedule-Only Likely Savings" in html
-    assert "Schedule-Only High Savings" in html
     assert "dev-batch" in html
     assert "prod-batch" not in html
-    assert "$8.64" in html
-    assert "$12.34" in html
+    assert "AWS COH" in html
+    assert "Native finops-pack" in html
 
 
 def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
@@ -188,6 +189,7 @@ def test_render_dashboard_html_limits_top_opportunities_to_twenty() -> None:
 
     html = render_dashboard_html(
         account_map,
+        report_mode="technical",
         spend_baseline=SpendBaseline(
             window_start="2026-02-22",
             window_end="2026-03-24",
@@ -310,8 +312,9 @@ def test_render_dashboard_html_includes_download_links() -> None:
     assert "Privacy + Retention" in html
     assert "acme-prod" in html
     assert "20260401T010203Z-test" in html
-    assert "Savings Change Since Last Report" in html
+    assert "Top 3 actions" in html
     assert "+$12.50 / month" in html
+    assert "Technical Appendix" in html
     assert "Download Files" in html
     assert "Download All" in html
     assert "Accounts JSON" in html

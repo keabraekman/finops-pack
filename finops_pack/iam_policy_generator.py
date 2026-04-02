@@ -15,7 +15,9 @@ BASE_POLICY_STATEMENTS: list[dict[str, Any]] = [
         "Effect": "Allow",
         "Action": [
             "ec2:DescribeInstances",
+            "ec2:DescribeVolumes",
             "organizations:ListAccounts",
+            "rds:DescribeDBInstances",
         ],
         "Resource": "*",
     },
