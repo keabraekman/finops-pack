@@ -155,12 +155,15 @@ def test_render_dashboard_html_includes_savings_breakdowns() -> None:
     )
 
     assert "Current AWS spend" in html
-    assert "Estimated monthly savings" in html
-    assert "Savings as % of spend" in html
+    assert "AWS-verified monthly savings" in html
+    assert "Modeled schedule savings" in html
+    assert "Total potential savings" in html
+    assert "Savings as % of spend" not in html
     assert "$201.45" in html
     assert "Priority Actions" in html
     assert "Savings By Bucket" in html
     assert "Technical Appendix" in html
+    assert "AWS COH findings are AWS-generated recommendations." in html
     assert "Stop 1 non-prod EC2 instance off-hours" in html
     assert "Buy 1 compute savings plan" in html
     assert "Clean up or tune 1 EBS volume" in html
@@ -315,6 +318,7 @@ def test_render_dashboard_html_includes_download_links() -> None:
     assert "Top 3 actions" in html
     assert "+$12.50 / month" in html
     assert "Technical Appendix" in html
+    assert "AWS-verified monthly savings" in html
     assert "Download Files" in html
     assert "Download All" in html
     assert "Accounts JSON" in html

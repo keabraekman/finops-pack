@@ -775,6 +775,30 @@ def _build_savings_by_lever_context(
     return rows or None
 
 
+def _is_modeled_schedule_action(action: ActionOpportunity) -> bool:
+    """Return whether an action is a native stop/start schedule estimate."""
+    return (
+        action.source_label == "Native finops-pack"
+        and "off-hours" in action.action_label.lower()
+    )
+
+
+def _is_aws_generated_action(action: ActionOpportunity) -> bool:
+    """Return whether an action comes directly from AWS-generated recommendation data."""
+    return action.source_label in {"AWS COH", "CE fallback"}
+
+
+def _source_trust_note(action: ActionOpportunity) -> str:
+    """Return short trust language for the action source."""
+    if action.source_label == "AWS COH":
+        return "AWS-generated recommendation"
+    if action.source_label == "CE fallback":
+        return "AWS-generated fallback signal"
+    if _is_modeled_schedule_action(action):
+        return "finops-pack modeled estimate"
+    return "finops-pack native heuristic"
+
+
 def _build_action_rows(actions: Sequence[ActionOpportunity] | None) -> list[dict[str, Any]]:
     """Flatten ranked actions into render-friendly rows."""
     rows: list[dict[str, Any]] = []
@@ -795,6 +819,7 @@ def _build_action_rows(actions: Sequence[ActionOpportunity] | None) -> list[dict
                 "confidence": action.confidence,
                 "confidence_label": action.confidence.title(),
                 "source_label": action.source_label,
+                "source_trust_note": _source_trust_note(action),
                 "why_it_matters": action.why_it_matters,
                 "what_to_do_first": action.what_to_do_first,
                 "evidence_summary": action.evidence_summary,
@@ -814,22 +839,37 @@ def _build_action_context(
 ) -> dict[str, Any]:
     """Build ranked owner-facing action context for both report modes."""
     action_rows = _build_action_rows(action_opportunities)
+    aws_verified_monthly_savings = round(
+        sum(
+            action.monthly_savings
+            for action in action_opportunities or []
+            if _is_aws_generated_action(action)
+        ),
+        2,
+    )
+    modeled_schedule_monthly_savings = round(
+        sum(
+            action.monthly_savings
+            for action in action_opportunities or []
+            if _is_modeled_schedule_action(action)
+        ),
+        2,
+    )
+    additional_native_monthly_savings = round(
+        sum(
+            action.monthly_savings
+            for action in action_opportunities or []
+            if (
+                action.source_label == "Native finops-pack"
+                and not _is_modeled_schedule_action(action)
+            )
+        ),
+        2,
+    )
     total_monthly_savings = round(
         sum(row["monthly_savings"] for row in action_rows),
         2,
     )
-    total_spend = (
-        float(spend_baseline_context["total_amount"])
-        if spend_baseline_context is not None
-        and isinstance(spend_baseline_context.get("total_amount"), (int, float))
-        else None
-    )
-    recoverable_percentage = (
-        round((total_monthly_savings / total_spend) * 100, 1)
-        if total_spend and total_spend > 0
-        else None
-    )
-
     bucket_summaries = summarize_actions_by_bucket(action_opportunities or [])
     bucket_details: list[dict[str, Any]] = []
     for bucket_name in BUCKET_ORDER:
@@ -864,20 +904,60 @@ def _build_action_context(
             }
         )
 
+    if aws_verified_monthly_savings > 0 and modeled_schedule_monthly_savings > 0:
+        hero_headline = (
+            "We found "
+            f"{_format_currency(aws_verified_monthly_savings, 'USD')}/mo in AWS-generated "
+            "savings plus "
+            f"{_format_currency(modeled_schedule_monthly_savings, 'USD')}/mo in modeled "
+            "schedule savings."
+        )
+    elif aws_verified_monthly_savings > 0:
+        hero_headline = (
+            "We found "
+            f"{_format_currency(aws_verified_monthly_savings, 'USD')}/mo in AWS-generated "
+            "savings opportunities."
+        )
+    elif modeled_schedule_monthly_savings > 0:
+        hero_headline = (
+            "We found "
+            f"{_format_currency(modeled_schedule_monthly_savings, 'USD')}/mo in modeled "
+            "schedule savings opportunities."
+        )
+    else:
+        hero_headline = "We found AWS savings opportunities worth reviewing."
+
     return {
         "has_actions": bool(action_rows),
+        "hero_headline": hero_headline,
+        "trust_note": (
+            "AWS COH findings are AWS-generated recommendations. "
+            "finops-pack schedule savings are modeled estimates based on off-hours "
+            "usage assumptions."
+        ),
         "total_monthly_savings": total_monthly_savings,
         "total_monthly_savings_display": _format_currency(total_monthly_savings, "USD"),
+        "aws_verified_monthly_savings": aws_verified_monthly_savings,
+        "aws_verified_monthly_savings_display": _format_currency(
+            aws_verified_monthly_savings,
+            "USD",
+        ),
+        "modeled_schedule_monthly_savings": modeled_schedule_monthly_savings,
+        "modeled_schedule_monthly_savings_display": _format_currency(
+            modeled_schedule_monthly_savings,
+            "USD",
+        ),
+        "additional_native_monthly_savings": additional_native_monthly_savings,
+        "additional_native_monthly_savings_display": _format_currency(
+            additional_native_monthly_savings,
+            "USD",
+        ),
+        "show_additional_native_note": additional_native_monthly_savings > 0,
         "current_spend_display": (
             spend_baseline_context["total_spend_display"]
             if spend_baseline_context is not None
             and isinstance(spend_baseline_context.get("total_spend_display"), str)
             else "Unavailable"
-        ),
-        "recoverable_percentage_display": (
-            f"{recoverable_percentage:.1f}%"
-            if recoverable_percentage is not None
-            else "n/a"
         ),
         "top_actions": action_rows[:3],
         "priority_actions": [

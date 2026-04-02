@@ -6,7 +6,7 @@
     <title>{{ title or "FinOps Pack Report" }}</title>
     <link rel="stylesheet" href="{{ stylesheet_path or 'style.css' }}" />
   </head>
-  <body>
+  <body class="lead-magnet-report">
     <div class="container">
       <header class="page-header">
         <div>
@@ -16,46 +16,20 @@
             {{ subtitle or "A simple savings diagnosis with a ranked action plan." }}
           </p>
         </div>
-
-        <div class="meta-card">
-          <div class="meta-row">
-            <span class="meta-label">Generated</span>
-            <span class="meta-value">{{ generated_at or "TBD" }}</span>
-          </div>
-          {% if client_id %}
-            <div class="meta-row">
-              <span class="meta-label">Client</span>
-              <span class="meta-value">{{ client_id }}</span>
-            </div>
-          {% endif %}
-          {% if run_id %}
-            <div class="meta-row">
-              <span class="meta-label">Run ID</span>
-              <span class="meta-value">{{ run_id }}</span>
-            </div>
-          {% endif %}
-          <div class="meta-row">
-            <span class="meta-label">Account</span>
-            <span class="meta-value">{{ account_id or "TBD" }}</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">Region</span>
-            <span class="meta-value">{{ region or "TBD" }}</span>
-          </div>
-        </div>
       </header>
 
       <section class="section hero-section">
         <div class="hero-card">
           <div class="hero-copy">
             <p class="eyebrow">Savings Snapshot</p>
-            <h2>We found {{ action_context.total_monthly_savings_display }} / month in AWS savings opportunities</h2>
+            <h2>{{ action_context.hero_headline }}</h2>
             <p class="hero-note">
               {{ executive_summary }}
             </p>
             {% if comparison_context %}
               <p class="hero-meta">Savings change since last report: <strong>{{ comparison_context.savings_change_display }}</strong> <span class="muted-inline">{{ comparison_context.summary }}</span></p>
             {% endif %}
+            <p class="hero-trust-note">{{ action_context.trust_note }}</p>
           </div>
 
           <div class="hero-stats">
@@ -64,12 +38,25 @@
               <p class="summary-value">{{ action_context.current_spend_display }}</p>
             </article>
             <article class="summary-card hero-stat">
-              <p class="summary-label">Estimated monthly savings</p>
-              <p class="summary-value">{{ action_context.total_monthly_savings_display }}</p>
+              <p class="summary-label">AWS-verified monthly savings</p>
+              <p class="summary-value">{{ action_context.aws_verified_monthly_savings_display }}</p>
+              <p class="split-meta">AWS COH and AWS fallback signals</p>
             </article>
             <article class="summary-card hero-stat">
-              <p class="summary-label">Savings as % of spend</p>
-              <p class="summary-value">{{ action_context.recoverable_percentage_display }}</p>
+              <p class="summary-label">Modeled schedule savings</p>
+              <p class="summary-value">{{ action_context.modeled_schedule_monthly_savings_display }}</p>
+              <p class="split-meta">finops-pack off-hours estimate</p>
+            </article>
+            <article class="summary-card hero-stat">
+              <p class="summary-label">Total potential savings</p>
+              <p class="summary-value">{{ action_context.total_monthly_savings_display }}</p>
+              <p class="split-meta">Estimated total across mixed sources</p>
+              {% if action_context.show_additional_native_note %}
+                <p class="hero-stat-note">
+                  Includes {{ action_context.additional_native_monthly_savings_display }}/mo from
+                  additional native finops-pack findings.
+                </p>
+              {% endif %}
             </article>
           </div>
         </div>
@@ -93,6 +80,20 @@
           {% else %}
             <p class="empty-note">No owner-facing actions were generated for this run yet.</p>
           {% endif %}
+        </div>
+      </section>
+
+      <section class="section section-tight">
+        <div class="meta-strip">
+          <span class="meta-chip"><strong>Generated:</strong> {{ generated_at or "TBD" }}</span>
+          {% if client_id %}
+            <span class="meta-chip"><strong>Client:</strong> {{ client_id }}</span>
+          {% endif %}
+          {% if run_id %}
+            <span class="meta-chip"><strong>Run ID:</strong> {{ run_id }}</span>
+          {% endif %}
+          <span class="meta-chip"><strong>Account:</strong> {{ account_id or "TBD" }}</span>
+          <span class="meta-chip"><strong>Region:</strong> {{ region or "TBD" }}</span>
         </div>
       </section>
 
@@ -179,7 +180,7 @@
                       <div class="detail-card-header">
                         <div>
                           <div class="table-primary">{{ action.action_label }}</div>
-                          <div class="table-secondary">{{ action.source_label }} · confidence {{ action.confidence_label }}</div>
+                          <div class="table-secondary">{{ action.source_label }} · {{ action.source_trust_note }} · confidence {{ action.confidence_label }}</div>
                         </div>
                         <div class="detail-card-savings">{{ action.monthly_savings_display }}</div>
                       </div>
