@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Read-only AWS review</p>
+      <h1>AWS Savings Review</h1>
+      <p class="lede">
+        Create one read-only IAM role and receive a browser-ready report with top savings opportunities, supporting evidence, and a technical appendix.
+      </p>
+      <div class="button-row">
+        <a class="button" href="{{ request.url_for('setup_page') }}">See setup steps</a>
+        <a class="button button-secondary" href="{{ request.url_for('intake_page') }}">
+          Connect AWS account
+        </a>
+      </div>
+    </div>
+    <aside class="hero-card">
+      <p class="eyebrow">Included in the review</p>
+      <h2>A focused savings report you can review quickly.</h2>
+      <ul class="check-list">
+        <li>Estimated monthly savings opportunities</li>
+        <li>Top recommended actions by impact</li>
+        <li>Resource-level evidence for major findings</li>
+        <li>A downloadable report and technical appendix</li>
+      </ul>
+    </aside>
+  </section>
+
+  <section class="grid two-up">
+    <article class="card">
+      <p class="eyebrow">What you get</p>
+      <h2>Concrete output, not a long onboarding project.</h2>
+      <ul class="bullet-list">
+        <li>Recent AWS spend context based on current billing data</li>
+        <li>Priority actions ranked by estimated impact</li>
+        <li>Supporting evidence you can review with engineering or finance</li>
+      </ul>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Deliverables</p>
+      <h2>Ready to share with your team.</h2>
+      <ul class="bullet-list">
+        <li>Browser-ready dashboard</li>
+        <li>Technical appendix with validation and evidence</li>
+        <li>Saved report history for future reruns</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="card section-card">
+    <p class="eyebrow">How It Works</p>
+    <div class="steps">
+      <article class="step">
+        <span class="step-number">1</span>
+        <h3>Enable the billing prerequisites</h3>
+        <p>Turn on Cost Explorer and Cost Optimization Hub in AWS Billing and Cost Management.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">2</span>
+        <h3>Create the read-only role</h3>
+        <p>Use the trusted AWS account ID <code>{{ trusted_account_id }}</code> and a customer-specific external ID.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">3</span>
+        <h3>Paste the role ARN and external ID</h3>
+        <p>Paste the role details into the form and confirm the billing prerequisites are enabled.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">4</span>
+        <h3>Validate access</h3>
+        <p>The site checks the role and billing setup before the review starts.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">5</span>
+        <h3>Add your work email</h3>
+        <p>Your email is used to send the report link and save this run to your report history.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">6</span>
+        <h3>Review the report</h3>
+        <p>Open the dashboard in-browser, then use the appendix for supporting evidence and validation detail.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="grid two-up">
+    <article class="card">
+      <p class="eyebrow">Trust and simplicity</p>
+      <h2>One role, read-only access, no shared credentials.</h2>
+      <ul class="bullet-list">
+        <li>Read-only cross-account IAM role only</li>
+        <li>External ID required for assume-role</li>
+        <li>No AWS passwords, no console login sharing, no long-term access keys</li>
+        <li>Single-account and AWS Organization reviews supported</li>
+      </ul>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Who it is for</p>
+      <h2>A quick outside review for teams with meaningful AWS spend.</h2>
+      <ul class="bullet-list">
+        <li>Founders, operators, platform, infrastructure, and finance owners</li>
+        <li>Teams that want a fast review without a long onboarding project</li>
+        <li>Anyone wanting a practical outside perspective on AWS cost</li>
+      </ul>
+    </article>
+  </section>
+
+  <section class="grid two-up">
+    <article class="card">
+      <p class="eyebrow">Coverage</p>
+      <h2>Covers active AWS regions by default.</h2>
+      <p class="body-copy">
+        The review scans active commercial AWS regions automatically when role permissions allow it, with a fallback coverage set for local testing.
+      </p>
+    </article>
+    <article class="card">
+      <p class="eyebrow">Spend window</p>
+      <h2>Uses recent billing data.</h2>
+      <p class="body-copy">
+        Spend figures reflect current Cost Explorer data rather than lifetime spend since the account was created.
+      </p>
+    </article>
+  </section>
+{% endblock %}

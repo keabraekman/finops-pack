@@ -9,7 +9,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 import finops_pack.cli as cli
-from finops_pack.models import (
+from finops_pack.domain.models import (
     AccessCheck,
     AccessReport,
     AccountRecord,
@@ -18,7 +18,7 @@ from finops_pack.models import (
     SpendBaseline,
     SpendBaselineBucket,
 )
-from finops_pack.prerequisites import CE_RESOURCE_LEVEL_DOC_NOTE
+from finops_pack.orchestration.prerequisites import CE_RESOURCE_LEVEL_DOC_NOTE
 
 
 def test_demo_command_runs(tmp_path: Path) -> None:
@@ -603,6 +603,7 @@ def test_handle_run_enables_cost_optimization_hub(
     list_recommendation_summaries.assert_called_once_with(
         session,
         region_name="us-east-1",
+        group_by=cli.DEFAULT_SUMMARY_GROUP_BY,
         rate_limit_safe_mode=True,
     )
     list_recommendations.assert_called_once_with(
@@ -757,40 +758,43 @@ def test_handle_run_enables_cost_optimization_hub(
     assert "2.07,2.95,2.95" in schedule_csv
     assert "estimated" in schedule_csv
     dashboard_html = (tmp_path / "output" / "dashboard.html").read_text(encoding="utf-8")
-    assert "Top 3 actions" in dashboard_html
+    assert "Top actions" in dashboard_html
     assert "Priority Actions" in dashboard_html
-    assert "Savings By Bucket" in dashboard_html
-    assert "View technical appendix" in dashboard_html
+    assert "Savings by bucket" in dashboard_html
+    assert "Open technical appendix" in dashboard_html
     assert 'href="appendix.html"' in dashboard_html
-    assert "FinOps Pack Dashboard - acme-prod" in dashboard_html
+    assert "AWS Savings Review" in dashboard_html
     assert "prod-core" in dashboard_html
     assert "Rightsize 1 EC2 instance" in dashboard_html
     assert "+$12.50 / month" in dashboard_html
-    assert "Download Files" not in dashboard_html
+    assert "Downloads" not in dashboard_html
     assert "Privacy + Retention" not in dashboard_html
     assert "Access Report" not in dashboard_html
-    assert dashboard_html.index("View technical appendix") > dashboard_html.index("Details")
+    assert (
+        dashboard_html.index("Open technical appendix")
+        > dashboard_html.index("Opportunity details")
+    )
 
     appendix_html = (tmp_path / "output" / "appendix.html").read_text(encoding="utf-8")
     assert "Privacy + Retention" in appendix_html
-    assert "Download Files" in appendix_html
-    assert "Access Report" in appendix_html
-    assert "Region Coverage" in appendix_html
+    assert "Downloads" in appendix_html
+    assert "Access validation" in appendix_html
+    assert "Review coverage" in appendix_html
     assert "Account Map" in appendix_html
     assert "20260401T010203Z-test" in appendix_html
     assert 'href="dashboard.html"' in appendix_html
 
     preview_html = (tmp_path / "out" / "index.html").read_text(encoding="utf-8")
-    assert "FinOps Pack Dashboard - acme-prod" in preview_html
+    assert "AWS Savings Review" in preview_html
     assert "Priority Actions" in preview_html
     assert 'href="appendix.html"' in preview_html
-    assert "View technical appendix" in preview_html
+    assert "Open technical appendix" in preview_html
     assert "Privacy + Retention" not in preview_html
-    assert "Download Files" not in preview_html
+    assert "Downloads" not in preview_html
     assert (tmp_path / "out" / "report-bundle.zip").exists()
     preview_appendix_html = (tmp_path / "out" / "appendix.html").read_text(encoding="utf-8")
     assert "Privacy + Retention" in preview_appendix_html
-    assert "Download Files" in preview_appendix_html
+    assert "Downloads" in preview_appendix_html
     assert 'href="index.html"' in preview_appendix_html
     assert 'href="report-bundle.zip"' in preview_appendix_html
     assert 'href="downloads/accounts.json"' in preview_appendix_html
@@ -851,6 +855,37 @@ def test_merge_coh_collection_status_marks_module_degraded_when_collection_fails
     )
 
 
+def test_merge_coh_collection_status_keeps_active_on_empty_success() -> None:
+    report = AccessReport(
+        account_id="123456789012",
+        region_coverage=RegionCoverage(
+            strategy="fixed",
+            primary_region="us-east-1",
+            regions=["us-east-1"],
+        ),
+        modules=[
+            ModuleStatus(
+                module_id="cost_optimization_hub",
+                label="Cost Optimization Hub module",
+                status="ACTIVE",
+                reason="Cost Optimization Hub enrollment status is Active.",
+            )
+        ],
+    )
+
+    cli._merge_coh_collection_status(
+        report,
+        summaries_snapshot={
+            "itemCount": 0,
+            "estimatedTotalDedupedSavings": None,
+        },
+        recommendations_snapshot={"itemCount": 0},
+    )
+
+    assert report.modules[0].status == "ACTIVE"
+    assert report.modules[0].reason == "Cost Optimization Hub enrollment status is Active."
+
+
 def test_build_access_report_marks_modules_degraded_when_prerequisites_are_missing() -> None:
     session = Mock()
     sts_client = Mock()
@@ -895,6 +930,37 @@ def test_build_access_report_marks_modules_degraded_when_prerequisites_are_missi
     assert module_map["resource_level_costs"].status == "DEGRADED"
     assert "not enabled" in module_map["resource_level_costs"].reason
     assert CE_RESOURCE_LEVEL_DOC_NOTE in module_map["resource_level_costs"].reason
+
+
+def test_check_resource_level_costs_treats_empty_rows_as_active() -> None:
+    session = Mock()
+    ce_client = Mock()
+    ce_client.get_cost_and_usage_with_resources.return_value = {
+        "ResultsByTime": [
+            {
+                "TimePeriod": {"Start": "2026-03-10", "End": "2026-03-11"},
+                "Groups": [],
+            }
+        ]
+    }
+    session.client.return_value = ce_client
+
+    check = cli._check_resource_level_costs(session)
+
+    assert check.status == "ACTIVE"
+    assert check.enabled is True
+    assert "no recent EC2 resource-level cost rows" in check.reason
+    request_kwargs = ce_client.get_cost_and_usage_with_resources.call_args.kwargs
+    assert set(request_kwargs["TimePeriod"]) == {"Start", "End"}
+    assert request_kwargs["Granularity"] == "DAILY"
+    assert request_kwargs["Metrics"] == ["UnblendedCost"]
+    assert request_kwargs["Filter"] == {
+        "Dimensions": {
+            "Key": "SERVICE",
+            "Values": ["Amazon Elastic Compute Cloud - Compute"],
+        }
+    }
+    assert request_kwargs["GroupBy"] == [{"Type": "DIMENSION", "Key": "RESOURCE_ID"}]
 
 
 def test_build_access_report_marks_unknown_when_permissions_are_missing() -> None:

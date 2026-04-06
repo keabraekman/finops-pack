@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="page-intro">
+    <p class="eyebrow">Report history</p>
+    <h1>Saved reports for {{ lead.company_name or lead.email }}</h1>
+    <p class="lede">
+      Each saved run for this contact appears here with its status and report links.
+    </p>
+  </section>
+
+  <section class="stack">
+    {% for run in runs %}
+      <article class="card history-card">
+        <div class="history-card-header">
+          <div>
+            <h2>{{ run.company_name or "AWS savings review" }}</h2>
+            <p class="body-copy">Created {{ run.created_at }}</p>
+          </div>
+          <span class="status-badge status-badge-{{ run.status|lower }}">{{ run.status }}</span>
+        </div>
+        <div class="detail-list">
+          <div>
+            <span class="detail-label">Review ID</span>
+            <strong>{{ run.public_id }}</strong>
+          </div>
+          <div>
+            <span class="detail-label">Account</span>
+            <strong>{{ run.account_id or "Pending" }}</strong>
+          </div>
+          <div>
+            <span class="detail-label">Role ARN</span>
+            <strong>{{ run.role_arn }}</strong>
+          </div>
+        </div>
+        <div class="button-row">
+          <a class="button button-secondary" href="{{ request.url_for('run_status_page', run_public_id=run.public_id) }}">Open report</a>
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}

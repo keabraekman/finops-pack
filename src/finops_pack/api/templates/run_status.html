@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="page-intro">
+    <p class="eyebrow">Report status</p>
+    <h1>AWS Savings Review for {{ lead.company_name if lead and lead.company_name else (run.company_name or "your account") }}</h1>
+    <p class="lede">
+      Review ID <code>{{ run.public_id }}</code>
+      covers {{ "an AWS Organization" if run.account_scope == "organization" else "one AWS account" }}
+      {% if run.account_id %}
+        and resolved AWS account <code>{{ run.account_id }}</code>.
+      {% else %}
+        is in progress.
+      {% endif %}
+    </p>
+  </section>
+
+  {% if run.status in ("QUEUED", "RUNNING") %}
+    <section class="card section-card">
+      <p class="eyebrow">In progress</p>
+      <h2>Your assessment is queued for the report worker.</h2>
+      <p class="body-copy">
+        The worker validates billing data, scans active regions, and generates your report in the background. This page refreshes automatically.
+      </p>
+      <ul class="status-list">
+        {% for check in validation_result.checks %}
+          <li class="status-row status-{{ check.level }}">
+            <strong>{{ check.label }}</strong>
+            <span>{{ check.detail }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <script>
+      const statusUrl = "{{ request.url_for('run_status_json', run_public_id=run.public_id) }}";
+      const refreshWhenDone = async () => {
+        const response = await fetch(statusUrl, { headers: { "Accept": "application/json" } });
+        if (!response.ok) {
+          return;
+        }
+        const payload = await response.json();
+        if (payload.status === "SUCCEEDED" || payload.status === "FAILED") {
+          window.location.reload();
+        }
+      };
+      window.setInterval(refreshWhenDone, 3000);
+    </script>
+  {% elif run.status == "FAILED" %}
+    <section class="alert alert-danger">
+      <h2>We couldn’t complete this report yet.</h2>
+      <p>{{ run.error_summary or "The run failed before a friendly error summary was captured." }}</p>
+      <p class="body-copy">
+        The validated setup details are still saved, so you can correct access and rerun without starting over.
+      </p>
+      {% if history_url %}
+        <div class="button-row">
+          <a class="button" href="{{ history_url }}">View report history</a>
+        </div>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="grid report-grid">
+      <article class="card section-card">
+        <p class="eyebrow">Report Ready</p>
+        <h2>Your report is ready.</h2>
+        <p class="body-copy">
+          Review the dashboard below, open the appendix for supporting detail, and download the report files if needed.
+        </p>
+        <div class="button-row">
+          {% if appendix_url %}
+            <a class="button button-secondary" href="{{ appendix_url }}" target="_blank" rel="noreferrer">Open technical appendix</a>
+          {% endif %}
+          {% if bundle_url %}
+            <a class="button button-secondary" href="{{ bundle_url }}">Download report files</a>
+          {% endif %}
+          {% if history_url %}
+            <a class="button button-secondary" href="{{ history_url }}">View report history</a>
+          {% endif %}
+        </div>
+      </article>
+
+      <aside class="card cta-panel">
+        <p class="eyebrow">Next step</p>
+        <h2>Turn the findings into an action plan</h2>
+        <p class="body-copy">
+          Review the top opportunities and prioritize implementation across engineering, finance, and operations.
+        </p>
+        <a class="button" href="{{ settings.report_cta_url }}" target="_blank" rel="noreferrer">{{ settings.report_cta_label }}</a>
+      </aside>
+    </section>
+
+    {% if dashboard_url %}
+      <section class="card report-frame-card">
+        <iframe id="reportFrame" class="report-frame" src="{{ dashboard_url }}" title="AWS Savings Review report"></iframe>
+      </section>
+      <script>
+        const reportFrame = document.getElementById("reportFrame");
+        const resizeFrame = () => {
+          try {
+            const nextHeight = reportFrame.contentWindow.document.body.scrollHeight + 24;
+            if (nextHeight > 900) {
+              reportFrame.style.height = `${nextHeight}px`;
+            }
+          } catch (error) {
+            reportFrame.style.height = "2200px";
+          }
+        };
+        reportFrame.addEventListener("load", resizeFrame);
+        window.setTimeout(resizeFrame, 500);
+      </script>
+    {% endif %}
+  {% endif %}
+{% endblock %}

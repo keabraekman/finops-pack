@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="page-intro">
+    <p class="eyebrow">Step-By-Step Setup</p>
+    <h1>Create a read-only AWS role</h1>
+    <p class="lede">
+      Create this role once, then paste the role ARN and external ID to run your AWS Savings Review.
+    </p>
+  </section>
+
+  <section class="steps-vertical">
+    <article class="card step-card">
+      <span class="step-number">1</span>
+      <div>
+        <h2>Enable Cost Explorer</h2>
+        <p>In AWS Billing and Cost Management, turn on Cost Explorer. This powers the spend baseline and other billing checks.</p>
+      </div>
+    </article>
+    <article class="card step-card">
+      <span class="step-number">2</span>
+      <div>
+        <h2>Enable Cost Optimization Hub</h2>
+        <p>Turn on Cost Optimization Hub so AWS-native recommendation coverage can populate before the first report.</p>
+      </div>
+    </article>
+    <article class="card step-card">
+      <span class="step-number">3</span>
+      <div>
+        <h2>Create a new IAM role in your AWS account</h2>
+        <p>Name it something like <code>aws-savings-review-readonly</code>. Trust only the AWS account below and require the external ID shown here.</p>
+      </div>
+    </article>
+  </section>
+
+  <section class="grid two-up">
+    <article class="card code-card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Trust Policy</p>
+          <h2>Paste this into the role trust policy</h2>
+        </div>
+        <div class="mini-meta">
+          <span>Trusted AWS account</span>
+          <strong>{{ settings.operator_trusted_account_id }}</strong>
+        </div>
+      </div>
+      <p class="body-copy">
+        This policy allows the review service to assume the role only when the exact external ID below is provided.
+      </p>
+      <div class="inline-code-block">
+        <span class="inline-code-label">Suggested external ID</span>
+        <code>{{ suggested_external_id }}</code>
+      </div>
+      <pre><code>{{ trust_policy }}</code></pre>
+    </article>
+
+    <article class="card code-card">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">Permissions Policy</p>
+          <h2>Attach this read-only permissions policy</h2>
+        </div>
+        <div class="mini-meta">
+          <span>Access mode</span>
+          <strong>Read-only</strong>
+        </div>
+      </div>
+      <p class="body-copy">
+        This policy grants read-only access to billing, inventory, and optimization signals without making changes in your account.
+      </p>
+      <pre><code>{{ permissions_policy }}</code></pre>
+    </article>
+  </section>
+
+  <section class="card section-card">
+    <p class="eyebrow">What To Paste Back Into The Site</p>
+    <div class="steps">
+      <article class="step">
+        <span class="step-number">4</span>
+        <h3>Copy the role ARN</h3>
+        <p>Example: <code>arn:aws:iam::123456789012:role/aws-savings-review-readonly</code></p>
+      </article>
+      <article class="step">
+        <span class="step-number">5</span>
+        <h3>Use the same external ID</h3>
+        <p>The external ID in the trust policy must exactly match what you paste into the submission form.</p>
+      </article>
+      <article class="step">
+        <span class="step-number">6</span>
+        <h3>Return here and continue</h3>
+        <p>Paste the role ARN and external ID into the form to validate access and start the review.</p>
+      </article>
+    </div>
+    <div class="button-row">
+      <a class="button" href="{{ request.url_for('intake_page') }}?external_id={{ suggested_external_id }}">
+        Continue
+      </a>
+    </div>
+  </section>
+{% endblock %}

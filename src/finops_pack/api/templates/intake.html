@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="page-intro">
+    <p class="eyebrow">Assessment intake</p>
+    <h1>Connect your AWS environment</h1>
+    <p class="lede">
+      Tell us whether this is one AWS account or an AWS Organization, then paste the read-only role details to start the review.
+    </p>
+  </section>
+
+  {% if errors %}
+    <section class="alert alert-danger">
+      <h2>We still need a few fixes before the report can run.</h2>
+      <ul class="bullet-list">
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="{% if validation_result %}grid form-layout{% else %}stack{% endif %}">
+    <form class="card form-card" method="post" action="{{ request.url_for('submit_intake') }}">
+      <div class="field-grid">
+        <label class="field">
+          <span>Company name</span>
+          <input type="text" name="company_name" value="{{ form_data.company_name }}" placeholder="Example Co" />
+        </label>
+        <label class="field">
+          <span>Your name</span>
+          <input type="text" name="contact_name" value="{{ form_data.contact_name }}" placeholder="Jane Doe" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Work email</span>
+        <input type="email" name="email" value="{{ form_data.email }}" placeholder="jane@example.com" required />
+      </label>
+
+      <fieldset class="scope-field">
+        <legend>Is this one AWS account or an AWS Organization?</legend>
+        <label class="radio-card">
+          <input type="radio" name="account_scope" value="single_account" {% if form_data.account_scope != "organization" %}checked{% endif %} />
+          <span>
+            <strong>One AWS account</strong>
+            <small>Use a read-only role in the account you want reviewed.</small>
+          </span>
+        </label>
+        <label class="radio-card">
+          <input type="radio" name="account_scope" value="organization" {% if form_data.account_scope == "organization" %}checked{% endif %} />
+          <span>
+            <strong>AWS Organization</strong>
+            <small>Use a management-account role; account discovery runs in the worker when allowed.</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <label class="field">
+        <span>Role ARN</span>
+        <input type="text" name="role_arn" value="{{ form_data.role_arn }}" placeholder="arn:aws:iam::123456789012:role/aws-savings-review-readonly" required />
+      </label>
+
+      <label class="field">
+        <span>External ID</span>
+        <input type="text" name="external_id" value="{{ form_data.external_id }}" placeholder="aws-savings-review-your-company-abc123" required />
+      </label>
+
+      <label class="field">
+        <span>Notes</span>
+        <textarea name="notes" rows="4" placeholder="Optional context about the account, current priorities, or areas you want reviewed.">{{ form_data.notes }}</textarea>
+      </label>
+
+      <label class="checkbox-row">
+        <input type="checkbox" name="cost_explorer_enabled" value="yes" {% if form_data.cost_explorer_enabled %}checked{% endif %} />
+        <span>I enabled Cost Explorer in AWS Billing and Cost Management.</span>
+      </label>
+
+      <label class="checkbox-row">
+        <input type="checkbox" name="cost_optimization_hub_enabled" value="yes" {% if form_data.cost_optimization_hub_enabled %}checked{% endif %} />
+        <span>I enabled Cost Optimization Hub in AWS Billing and Cost Management.</span>
+      </label>
+
+      <div class="button-row">
+        <button class="button" type="submit">Validate AWS access</button>
+        <a class="button button-secondary" href="{{ request.url_for('setup_page') }}">Back to setup</a>
+      </div>
+    </form>
+
+    {% if validation_result %}
+      <aside class="card side-card">
+        <p class="eyebrow">Validation details</p>
+        <ul class="status-list">
+          {% for check in validation_result.checks %}
+            <li class="status-row status-{{ check.level }}">
+              <strong>{{ check.label }}</strong>
+              <span>{{ check.detail }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </aside>
+    {% endif %}
+  </section>
+{% endblock %}

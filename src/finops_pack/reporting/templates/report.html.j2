@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "AWS Savings Review" }}</title>
+    <link rel="stylesheet" href="{{ stylesheet_path or 'style.css' }}" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">AWS Savings Review</p>
+          <h1>{{ title or "AWS Savings Review" }}</h1>
+          <p class="subtitle">
+            {{ subtitle or "Detailed savings findings, coverage notes, and supporting evidence." }}
+          </p>
+        </div>
+
+        <div class="meta-card">
+          <div class="meta-row">
+            <span class="meta-label">Generated</span>
+            <span class="meta-value">{{ generated_at or "TBD" }}</span>
+          </div>
+          {% if client_id %}
+            <div class="meta-row">
+              <span class="meta-label">Review scope</span>
+              <span class="meta-value">{{ client_id }}</span>
+            </div>
+          {% endif %}
+          {% if run_id %}
+            <div class="meta-row">
+              <span class="meta-label">Run ID</span>
+              <span class="meta-value">{{ run_id }}</span>
+            </div>
+          {% endif %}
+          <div class="meta-row">
+            <span class="meta-label">Account</span>
+            <span class="meta-value">{{ account_id or "TBD" }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Coverage</span>
+            <span class="meta-value">
+              {% if access_report and access_report.region_coverage %}
+                {{ access_report.region_coverage.regions|length }} regions
+              {% else %}
+                {{ region or "TBD" }}
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {% if privacy_context %}
+        <section class="section section-tight">
+          <div class="privacy-banner">
+            <div class="privacy-header">
+              <div>
+                <p class="eyebrow privacy-eyebrow">Privacy + Retention</p>
+                <h2>Privacy + Retention</h2>
+              </div>
+              <span class="privacy-pill privacy-pill-{{ privacy_context.mode_variant or 'default' }}">
+                {{ privacy_context.mode_label }}
+              </span>
+            </div>
+
+            <div class="privacy-grid">
+              <article class="privacy-card">
+                <p class="summary-label">Storage Location</p>
+                <p class="status-note">{{ privacy_context.storage_location }}</p>
+              </article>
+              <article class="privacy-card">
+                <p class="summary-label">Access Model</p>
+                <p class="status-note">{{ privacy_context.access_model }}</p>
+              </article>
+              <article class="privacy-card">
+                <p class="summary-label">Retention</p>
+                <p class="status-note">{{ privacy_context.retention_policy }}</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      <section class="section">
+        <h2>Review summary</h2>
+        {% if executive_summary_cards %}
+          <div class="summary-grid">
+            {% for card in executive_summary_cards %}
+              <article class="summary-card">
+                <p class="summary-label">{{ card.label }}</p>
+                <p class="summary-value">{{ card.value }}</p>
+                {% if card.meta %}
+                  <p class="split-meta">{{ card.meta }}</p>
+                {% endif %}
+              </article>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="card">
+          <p>
+            {{ executive_summary or "This is a placeholder HTML report template. Findings and recommendations will appear here once the render pipeline is wired up." }}
+          </p>
+        </div>
+      </section>
+
+      {% if action_context %}
+        <section class="section">
+          <h2>Priority Actions</h2>
+          <p class="section-note">Top business actions ranked by savings, confidence, effort, risk, and owner relevance.</p>
+          {% if action_context.priority_actions %}
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Priority</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Bucket</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Risk</th>
+                    <th scope="col">Effort</th>
+                    <th scope="col">Confidence</th>
+                    <th scope="col" class="numeric-cell">Monthly Savings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for action in action_context.priority_actions %}
+                    <tr>
+                      <td class="numeric-cell">{{ action.priority }}</td>
+                      <td>
+                        <div class="table-primary">{{ action.action_label }}</div>
+                        <div class="table-secondary">{{ action.why_it_matters }}</div>
+                        <div class="table-secondary">{{ action.lever_label }}</div>
+                        {% if action.what_to_do_first %}
+                          <div class="table-secondary"><strong>Start with:</strong> {{ action.what_to_do_first }}</div>
+                        {% endif %}
+                      </td>
+                      <td>{{ action.bucket }}</td>
+                      <td>{{ action.source_label }}</td>
+                      <td><span class="badge badge-{{ action.risk }}">{{ action.risk_label }}</span></td>
+                      <td><span class="badge badge-{{ action.effort }}">{{ action.effort_label }}</span></td>
+                      <td><span class="badge badge-{{ action.confidence }}">{{ action.confidence_label }}</span></td>
+                      <td class="numeric-cell">{{ action.monthly_savings_display }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {% else %}
+            <div class="card">
+              <p class="empty-note">{{ action_context.empty_state_note }}</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if savings_by_lever %}
+        <section class="section">
+          <h2>Savings by lever</h2>
+          <p class="section-note">Schedule savings remain daily estimates. Cost Optimization Hub savings remain monthly estimates to preserve each source's native basis.</p>
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Lever</th>
+                    <th scope="col">Source</th>
+                    <th scope="col" class="numeric-cell">Opportunities</th>
+                    <th scope="col">Estimated Savings</th>
+                    <th scope="col">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in savings_by_lever %}
+                    <tr>
+                      <td>{{ row.lever }}</td>
+                      <td>{{ row.source }}</td>
+                      <td class="numeric-cell">{{ row.opportunity_count }}</td>
+                      <td>{{ row.savings_display }}</td>
+                      <td>{{ row.detail }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if coh_context and coh_context.top_opportunities %}
+        <section class="section">
+          <h2>AWS recommendation details</h2>
+          <p class="section-note">Top 20 Cost Optimization Hub opportunities ranked by estimated monthly savings.</p>
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Opportunity</th>
+                    <th scope="col">Account</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Region</th>
+                    <th scope="col" class="numeric-cell">Monthly Savings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for opportunity in coh_context.top_opportunities %}
+                    <tr>
+                      <td>{{ loop.index }}</td>
+                      <td>
+                        <div class="table-primary">{{ opportunity.title }}</div>
+                        {% if opportunity.summary %}
+                          <div class="table-secondary">{{ opportunity.summary }}</div>
+                        {% endif %}
+                      </td>
+                      <td>
+                        <div class="table-primary">{{ opportunity.account_name }}</div>
+                        <div class="table-secondary">{{ opportunity.account_id }}</div>
+                        <span class="badge env-badge env-{{ opportunity.environment }}">{{ opportunity.environment_label }}</span>
+                      </td>
+                      <td>{{ opportunity.category_label }}</td>
+                      <td>{{ opportunity.region }}</td>
+                      <td class="numeric-cell">{{ opportunity.monthly_savings_display }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if action_context.collection_notes %}
+        <section class="section">
+          <h2>Coverage notes</h2>
+          <div class="card">
+            <div class="module-list">
+              {% for note in action_context.collection_notes %}
+                <div class="module-item">
+                  <div class="module-heading">
+                    <span>{{ note.label }}</span>
+                    <span class="badge badge-medium">{{ note.status }}</span>
+                  </div>
+                  <p class="status-note">{{ note.reason }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if schedule_context %}
+        <section class="section">
+          <h2>Non-Prod Schedule Table</h2>
+          <p class="section-note">Embedded schedule recommendation table for non-prod EC2 stop-schedule candidates. Savings bands are daily and stay blank when resource-level Cost Explorer data is unavailable.</p>
+
+          <div class="summary-grid">
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Non-Prod Candidates</p>
+              <p class="summary-value">{{ schedule_context.recommendation_count }}</p>
+              <p class="split-meta">
+                {{ schedule_context.estimated_count }} estimated · {{ schedule_context.needs_opt_in_count }} need CE opt-in
+              </p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only Low Savings</p>
+              <p class="summary-value">{{ schedule_context.total_low_display }}</p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only Likely Savings</p>
+              <p class="summary-value">{{ schedule_context.total_likely_display }}</p>
+            </article>
+
+            <article class="summary-card savings-split-card">
+              <p class="summary-label">Schedule-Only High Savings</p>
+              <p class="summary-value">{{ schedule_context.total_high_display }}</p>
+            </article>
+          </div>
+
+          <div class="card">
+            <ul class="note-list">
+              {% for note in schedule_context.notes %}
+                <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Instance</th>
+                    <th scope="col">Region</th>
+                    <th scope="col" class="numeric-cell">Off-Hours</th>
+                    <th scope="col" class="numeric-cell">Low</th>
+                    <th scope="col" class="numeric-cell">Likely</th>
+                    <th scope="col" class="numeric-cell">High</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in schedule_context.rows %}
+                    <tr>
+                      <td>
+                        <div class="table-primary">{{ row.account_name }}</div>
+                        <div class="table-secondary">{{ row.account_id }}</div>
+                      </td>
+                      <td>
+                        <div class="table-primary">{{ row.instance_name or row.instance_id }}</div>
+                        <div class="table-secondary">{{ row.instance_id }}</div>
+                        {% if row.instance_type or row.platform %}
+                          <div class="table-secondary">
+                            {{ row.instance_type }}{% if row.instance_type and row.platform %} · {% endif %}{{ row.platform }}
+                          </div>
+                        {% endif %}
+                      </td>
+                      <td>{{ row.region }}</td>
+                      <td class="numeric-cell">{{ row.off_hours_ratio_display }}</td>
+                      <td class="numeric-cell">{{ row.low_display }}</td>
+                      <td class="numeric-cell">{{ row.likely_display }}</td>
+                      <td class="numeric-cell">{{ row.high_display }}</td>
+                      <td>
+                        <div class="table-primary">{{ row.estimation_status }}</div>
+                        {% if row.estimation_reason %}
+                          <div class="table-secondary">{{ row.estimation_reason }}</div>
+                        {% endif %}
+                        {% if row.resource_cost_display %}
+                          <div class="table-secondary">{{ row.resource_cost_display }}</div>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if download_links %}
+        <section class="section">
+          <h2>Downloads</h2>
+          <div class="download-grid">
+            {% for link in download_links %}
+              <a class="download-card{% if link.variant == 'primary' %} download-card-primary{% endif %}" href="{{ link.href }}">
+                <div class="download-card-header">
+                  <h3>{{ link.label }}</h3>
+                  <span class="badge badge-low">{{ link.format }}</span>
+                </div>
+                <p class="status-note">{{ link.description }}</p>
+                <p class="download-path">{{ link.filename }}</p>
+              </a>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if spend_baseline_context %}
+        <section class="section">
+          <h2>Spend Baseline</h2>
+          <p class="section-note">Last 30 completed days of Cost Explorer unblended spend, grouped with monthly context.</p>
+
+          {% if spend_baseline_context.error and not spend_baseline_context.monthly_buckets %}
+            <div class="card">
+              <p class="empty-note">{{ spend_baseline_context.error }}</p>
+            </div>
+          {% else %}
+            <div class="card">
+              <div class="kv-grid">
+                <div>
+                  <span class="kv-label">Window</span>
+                  <div class="kv-value">{{ spend_baseline_context.window_display }}</div>
+                </div>
+                <div>
+                  <span class="kv-label">Window Length</span>
+                  <div class="kv-value">{{ spend_baseline_context.window_days }} days</div>
+                </div>
+                <div>
+                  <span class="kv-label">Total Spend</span>
+                  <div class="kv-value">{{ spend_baseline_context.total_spend_display }}</div>
+                </div>
+                <div>
+                  <span class="kv-label">Average Daily Spend</span>
+                  <div class="kv-value">{{ spend_baseline_context.average_daily_display }}</div>
+                </div>
+              </div>
+            </div>
+
+            {% if spend_baseline_context.monthly_buckets %}
+              <div class="card table-card">
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Month</th>
+                        <th scope="col">Window</th>
+                        <th scope="col" class="numeric-cell">Spend</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for bucket in spend_baseline_context.monthly_buckets %}
+                        <tr>
+                          <td>{{ bucket.month_label }}</td>
+                          <td>{{ bucket.window_display }}</td>
+                          <td class="numeric-cell">{{ bucket.spend_display }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            {% endif %}
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if prerequisites_context %}
+        <section class="section">
+          <h2>Validation details</h2>
+          <p class="section-note">Best-effort detector for the billing features and access checks this review depends on.</p>
+
+          <div class="access-grid">
+            {% for item in prerequisites_context["items"] %}
+              <article class="card">
+                <div class="card-header">
+                  <h3>{{ item.label }}</h3>
+                  <span class="badge {{ 'badge-low' if item.status == 'ACTIVE' else 'badge-medium' }}">{{ item.status }}</span>
+                </div>
+                <p class="status-line">Enabled: <strong>{{ item.enabled_label }}</strong></p>
+                <p class="status-note">{{ item.reason }}</p>
+                {% if item.doc_note %}
+                  <p class="status-note"><strong>Doc note:</strong> {{ item.doc_note }}</p>
+                {% endif %}
+                {% if item.guidance %}
+                  <p class="status-note">{{ item.guidance }}</p>
+                {% endif %}
+                <p class="status-meta">Checked via {{ item.checked_in_region }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if remediation_context %}
+        <section class="section">
+          <h2>Recommended follow-up</h2>
+          <div class="card">
+            <div class="module-list">
+              {% for step in remediation_context["steps"] %}
+                <div class="module-item">
+                  <div class="module-heading">
+                    <span>{{ loop.index }}. {{ step.title }}</span>
+                  </div>
+                  <p class="status-note">{{ step.detail }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if coh_context %}
+        <section class="section">
+          <h2>AWS recommendation notes</h2>
+          <div class="card">
+            <div class="kv-grid">
+              {% if coh_context.estimated_monthly_savings is not none %}
+                <div>
+                  <span class="kv-label">Estimated Monthly Savings (De-duped)</span>
+                  <div class="kv-value">
+                    {% if coh_context.currency_code == "USD" %}
+                      ${{ "%.2f"|format(coh_context.estimated_monthly_savings) }}
+                    {% elif coh_context.currency_code %}
+                      {{ "%.2f"|format(coh_context.estimated_monthly_savings) }} {{ coh_context.currency_code }}
+                    {% else %}
+                      {{ "%.2f"|format(coh_context.estimated_monthly_savings) }}
+                    {% endif %}
+                  </div>
+                </div>
+              {% endif %}
+
+              <div>
+                <span class="kv-label">Normalized Recommendations</span>
+                <div class="kv-value">{{ coh_context.recommendation_count }}</div>
+              </div>
+            </div>
+
+            <ul class="note-list">
+              {% for note in coh_context.notes %}
+                <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </section>
+
+        {% if coh_context.savings_by_category %}
+          <section class="section">
+            <h2>Savings by Category</h2>
+            <div class="card table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Category</th>
+                      <th scope="col" class="numeric-cell">Opportunities</th>
+                      <th scope="col" class="numeric-cell">Monthly Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for category in coh_context.savings_by_category %}
+                      <tr>
+                        <td>{{ category.label }}</td>
+                        <td class="numeric-cell">{{ category.opportunity_count }}</td>
+                        <td class="numeric-cell">{{ category.monthly_savings_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if coh_context.savings_by_account %}
+          <section class="section">
+            <h2>Savings by Account</h2>
+            <div class="card table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Account</th>
+                      <th scope="col">Environment</th>
+                      <th scope="col" class="numeric-cell">Opportunities</th>
+                      <th scope="col" class="numeric-cell">Monthly Savings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for account in coh_context.savings_by_account %}
+                      <tr>
+                        <td>
+                          <div class="table-primary">{{ account.account_name }}</div>
+                          <div class="table-secondary">{{ account.account_id }}</div>
+                        </td>
+                        <td>
+                          <span class="badge env-badge env-{{ account.environment }}">{{ account.environment_label }}</span>
+                        </td>
+                        <td class="numeric-cell">{{ account.opportunity_count }}</td>
+                        <td class="numeric-cell">{{ account.monthly_savings_display }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        {% endif %}
+
+        {% if coh_context.savings_by_environment %}
+          <section class="section">
+            <h2>Prod vs Non-Prod Savings</h2>
+            <div class="summary-grid">
+              {% for environment in coh_context.savings_by_environment %}
+                <article class="summary-card savings-split-card">
+                  <p class="summary-label">{{ environment.label }}</p>
+                  <p class="summary-value">{{ environment.monthly_savings_display }}</p>
+                  <p class="split-meta">
+                    {{ environment.opportunity_count }} opportunities · {{ environment.share_display }} of tracked savings
+                  </p>
+                </article>
+              {% endfor %}
+            </div>
+          </section>
+        {% endif %}
+      {% endif %}
+
+      {% if access_report and access_report.region_coverage %}
+        <section class="section">
+          <h2>Review coverage</h2>
+          <div class="card">
+            <div class="kv-grid">
+              <div>
+                <span class="kv-label">Coverage mode</span>
+                <div class="kv-value">{{ access_report.region_coverage.strategy }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Primary region</span>
+                <div class="kv-value">{{ access_report.region_coverage.primary_region }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Regions scanned</span>
+                <div class="kv-value">{{ access_report.region_coverage.regions|join(", ") }}</div>
+              </div>
+              <div>
+                <span class="kv-label">Region count</span>
+                <div class="kv-value">{{ access_report.region_coverage.regions|length }}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if access_report %}
+        <section class="section">
+          <h2>Access validation</h2>
+
+          {% if access_report.checks %}
+            <div class="access-grid">
+              {% for check in access_report.checks %}
+                <article class="card">
+                  <div class="card-header">
+                    <h3>{{ check_labels.get(check.check_id, check.label) }}</h3>
+                    <span class="badge {{ 'badge-low' if check.status == 'ACTIVE' else 'badge-medium' }}">{{ check.status }}</span>
+                  </div>
+                  <p class="status-line">
+                    Enabled:
+                    <strong>
+                      {% if check.enabled is sameas true %}
+                        Yes
+                      {% elif check.enabled is sameas false %}
+                        No
+                      {% else %}
+                        Unknown
+                      {% endif %}
+                    </strong>
+                  </p>
+                  <p class="status-note">{{ check.reason }}</p>
+                  <p class="status-meta">Checked via {{ check.checked_in_region }}</p>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card">
+              <p class="empty-note">Demo mode does not query live AWS prerequisite status.</p>
+            </div>
+          {% endif %}
+
+          {% if access_report.modules %}
+            <div class="card">
+              <div class="card-header">
+                <h3>Data collection status</h3>
+              </div>
+              <div class="module-list">
+                {% for module in access_report.modules %}
+                  <div class="module-item">
+                    <div class="module-heading">
+                      <span>{{ module_labels.get(module.module_id, module.label) }}</span>
+                      <span class="badge {{ 'badge-low' if module.status == 'ACTIVE' else 'badge-medium' }}">{{ module.status }}</span>
+                    </div>
+                    <p class="status-note">{{ module.reason }}</p>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if account_map is defined %}
+        <section class="section">
+          <h2>Account Map</h2>
+
+          <div class="account-map-grid">
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Production</h3>
+                <span class="group-count">{{ account_map.prod|length }}</span>
+              </div>
+
+              {% if account_map.prod %}
+                <div class="account-list">
+                  {% for account in account_map.prod %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
+                      </div>
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="empty-note">No prod accounts classified yet.</p>
+              {% endif %}
+            </article>
+
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Non-Production</h3>
+                <span class="group-count">{{ account_map.nonprod|length }}</span>
+              </div>
+
+              {% if account_map.nonprod %}
+                <div class="account-list">
+                  {% for account in account_map.nonprod %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
+                      </div>
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="empty-note">No non-prod accounts classified yet.</p>
+              {% endif %}
+            </article>
+
+            <article class="card">
+              <div class="account-column-header">
+                <h3>Needs Review</h3>
+                <span class="group-count">{{ account_map.unknown|length }}</span>
+              </div>
+
+              {% if account_map.unknown %}
+                <div class="account-list">
+                  {% for account in account_map.unknown %}
+                    <article class="account-item">
+                      <div class="account-item-header">
+                        <div>
+                          <p class="account-name">{{ account.name }}</p>
+                          <p class="account-meta">{{ account.account_id }}{% if account.email %} · {{ account.email }}{% endif %}</p>
+                        </div>
+                        <span class="badge confidence-badge confidence-{{ account.confidence }}">{{ account.confidence }}</span>
+                      </div>
+                      <p class="account-reason">{{ account.classification_reason }}</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="empty-note">No review queue right now.</p>
+              {% endif %}
+            </article>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if show_findings_section is not defined or show_findings_section %}
+        <section class="section">
+          <h2>Findings</h2>
+
+          {% if findings %}
+            <div class="stack">
+              {% for finding in findings %}
+                <article class="card finding-card">
+                  <div class="card-header">
+                    <h3>{{ finding.title }}</h3>
+                    {% if finding.severity %}
+                      <span class="badge badge-{{ finding.severity|lower }}">{{ finding.severity }}</span>
+                    {% endif %}
+                  </div>
+
+                  {% if finding.description %}
+                    <p>{{ finding.description }}</p>
+                  {% endif %}
+
+                  {% if finding.resource_id or finding.resource_type %}
+                    <div class="kv-grid">
+                      {% if finding.resource_type %}
+                        <div>
+                          <span class="kv-label">Resource Type</span>
+                          <div class="kv-value">{{ finding.resource_type }}</div>
+                        </div>
+                      {% endif %}
+
+                      {% if finding.resource_id %}
+                        <div>
+                          <span class="kv-label">Resource ID</span>
+                          <div class="kv-value">{{ finding.resource_id }}</div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+
+                  {% if finding.estimated_monthly_savings is defined and finding.estimated_monthly_savings is not none %}
+                    <p class="savings">
+                      Estimated monthly savings:
+                      <strong>${{ "%.2f"|format(finding.estimated_monthly_savings) }}</strong>
+                    </p>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card empty-state">
+              <p>No findings yet.</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if show_recommendations_section is not defined or show_recommendations_section %}
+        <section class="section">
+          <h2>Recommendations</h2>
+
+          {% if recommendations %}
+            <div class="stack">
+              {% for recommendation in recommendations %}
+                <article class="card">
+                  <h3>{{ recommendation.title }}</h3>
+
+                  {% if recommendation.description %}
+                    <p>{{ recommendation.description }}</p>
+                  {% endif %}
+
+                  {% if recommendation.action %}
+                    <p><strong>Suggested action:</strong> {{ recommendation.action }}</p>
+                  {% endif %}
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="card empty-state">
+              <p>No recommendations yet.</p>
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+    </div>
+  </body>
+</html>

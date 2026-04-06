@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ page_title }} | {{ settings.brand_name }}</title>
+    <link rel="stylesheet" href="{{ request.url_for('site_static', path='site.css') }}" />
+  </head>
+  <body>
+    <header class="shell shell-header">
+      <a class="brand" href="{{ request.url_for('landing_page') }}">
+        <span class="brand-mark">AWS</span>
+        <span class="brand-copy">Savings Review</span>
+      </a>
+      <nav class="nav-links">
+        <a href="{{ request.url_for('landing_page') }}">Overview</a>
+        <a href="{{ request.url_for('setup_page') }}">Setup</a>
+        <a class="button button-quiet" href="{{ request.url_for('intake_page') }}">
+          Start review
+        </a>
+      </nav>
+    </header>
+
+    <main class="shell shell-main">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="shell shell-footer">
+      <p>
+        Read-only cross-account access only. No AWS passwords, console login, or long-term access keys.
+      </p>
+    </footer>
+  </body>
+</html>

@@ -22,6 +22,8 @@ dist/
 *.egg-info/
 out/
 output/
+web_data/
+web_data_smoke/
 
 # IDE
 .vscode/

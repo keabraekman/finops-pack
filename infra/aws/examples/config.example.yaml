@@ -1,0 +1,31 @@
+role_arn: arn:aws:iam::123456789012:role/FinopsPackReadOnly
+external_id: your-external-id-here
+region: us-east-1
+regions:
+  - us-east-1
+  - us-west-1
+session_name: finops-pack
+check_identity: false
+enable_coh: false
+collect_ce_resource_daily: false
+enable_ce_rightsizing_fallback: false
+enable_ce_savings_plan_fallback: false
+rate_limit_safe_mode: false
+output_dir: output
+demo_fixture_dir: demo/fixtures
+client_id: your-client-id
+report_bucket: finops-pack-reports
+report_retention_days: 7
+schedule:
+  timezone: UTC
+  business_hours:
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+    start_hour: 9
+    end_hour: 17
+prod_account_ids: []
+nonprod_account_ids: []

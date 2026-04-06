@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "AWS Savings Review" }}</title>
+    <link rel="stylesheet" href="{{ stylesheet_path or 'style.css' }}" />
+  </head>
+  <body class="lead-magnet-report">
+    <div class="container">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">AWS Savings Review</p>
+          <h1>{{ title or "AWS Savings Review" }}</h1>
+          <p class="subtitle">
+            {{ subtitle or "Estimated AWS savings opportunities, prioritized actions, and supporting evidence." }}
+          </p>
+        </div>
+      </header>
+
+      <section class="section hero-section">
+        <div class="hero-card">
+          <div class="hero-copy">
+            <p class="eyebrow">Review summary</p>
+            <h2>{{ action_context.hero_headline }}</h2>
+            <p class="hero-note">
+              {{ executive_summary }}
+            </p>
+            {% if comparison_context %}
+              <p class="hero-meta">Change since previous report: <strong>{{ comparison_context.savings_change_display }}</strong> <span class="muted-inline">{{ comparison_context.summary }}</span></p>
+            {% endif %}
+            <p class="hero-trust-note">{{ action_context.trust_note }}</p>
+          </div>
+
+          <div class="hero-stats">
+            <article class="summary-card hero-stat">
+              <p class="summary-label">Current AWS spend</p>
+              <p class="summary-value">{{ action_context.current_spend_display }}</p>
+            </article>
+            <article class="summary-card hero-stat">
+              <p class="summary-label">AWS recommendation savings</p>
+              <p class="summary-value">{{ action_context.aws_verified_monthly_savings_display }}</p>
+              <p class="split-meta">AWS-native recommendation signals</p>
+            </article>
+            <article class="summary-card hero-stat">
+              <p class="summary-label">Modeled schedule savings</p>
+              <p class="summary-value">{{ action_context.modeled_schedule_monthly_savings_display }}</p>
+              <p class="split-meta">Modeled from recent off-hours usage</p>
+            </article>
+            <article class="summary-card hero-stat">
+              <p class="summary-label">Total estimated savings</p>
+              <p class="summary-value">{{ action_context.total_monthly_savings_display }}</p>
+              <p class="split-meta">Estimated total across all review signals</p>
+              {% if action_context.total_savings_ratio_display %}
+                <p class="hero-stat-note">{{ action_context.total_savings_ratio_display }}</p>
+              {% endif %}
+              {% if action_context.show_additional_native_note %}
+                <p class="hero-stat-note">
+                  Includes {{ action_context.additional_native_monthly_savings_display }}/mo from
+                  additional platform analysis.
+                </p>
+              {% endif %}
+            </article>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Top actions</h3>
+          </div>
+          {% if action_context.top_actions %}
+            <div class="top-actions">
+              {% for action in action_context.top_actions %}
+                <article class="top-action-item">
+                  <div>
+                    <div class="table-primary">{{ action.action_label }}</div>
+                    <div class="table-secondary">{{ action.source_label }} · {{ action.lever_label }}</div>
+                  </div>
+                  <div class="top-action-savings">{{ action.monthly_savings_display }}</div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty-note">{{ action_context.empty_state_note }}</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="section section-tight">
+        <div
+          class="meta-strip-bar"
+          {% if run_id or account_id %}
+            title="{% if run_id %}Run ID: {{ run_id }}{% endif %}{% if run_id and account_id %} · {% endif %}{% if account_id %}Account: {{ account_id }}{% endif %}"
+          {% endif %}
+        >
+          <div class="meta-strip">
+            <span class="meta-chip"><span class="meta-chip-label">Generated</span>{{ generated_at or "TBD" }}</span>
+            {% if account_id %}
+              <span class="meta-chip"><span class="meta-chip-label">Account</span>{{ account_id }}</span>
+            {% endif %}
+            {% if access_report and access_report.region_coverage %}
+              <span class="meta-chip" title="{{ access_report.region_coverage.regions|join(', ') }}">
+                <span class="meta-chip-label">Coverage</span>{{ access_report.region_coverage.regions|length }} regions
+              </span>
+            {% else %}
+              <span class="meta-chip"><span class="meta-chip-label">Coverage</span>{{ region or "TBD" }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Priority Actions</h2>
+        <p class="section-note">The top actions ranked by estimated savings, implementation effort, confidence, and practical business relevance.</p>
+        {% if action_context.priority_actions %}
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Priority</th>
+                    <th scope="col">Action</th>
+                    <th scope="col" class="numeric-cell">Monthly savings</th>
+                    <th scope="col">Risk</th>
+                    <th scope="col">Effort</th>
+                    <th scope="col">Source</th>
+                    <th scope="col">Why this matters</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for action in action_context.priority_actions %}
+                    <tr>
+                      <td class="numeric-cell">{{ action.priority }}</td>
+                      <td>
+                        <div class="table-primary">{{ action.action_label }}</div>
+                        <div class="table-secondary">{{ action.lever_label }} · {{ action.bucket }}</div>
+                      </td>
+                      <td class="numeric-cell">{{ action.monthly_savings_display }}</td>
+                      <td><span class="badge badge-{{ action.risk }}">{{ action.risk_label }}</span></td>
+                      <td><span class="badge badge-{{ action.effort }}">{{ action.effort_label }}</span></td>
+                      <td>{{ action.source_label }}</td>
+                      <td>{{ action.why_it_matters }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% else %}
+          <div class="card">
+            <p class="empty-note">{{ action_context.empty_state_note }}</p>
+          </div>
+        {% endif %}
+      </section>
+
+      {% if action_context.bucket_summaries %}
+        <section class="section">
+          <h2>Savings by bucket</h2>
+          <div class="bucket-grid">
+            {% for bucket in action_context.bucket_summaries %}
+              <article class="summary-card bucket-card">
+                <p class="summary-label">{{ bucket.bucket }}</p>
+                <p class="summary-value">{{ bucket.monthly_savings_display }}</p>
+                <p class="split-meta">{{ bucket.opportunity_count }} opportunities</p>
+                <p class="status-note">{{ bucket.summary }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if action_context.bucket_details %}
+        <section class="section">
+          <h2>Opportunity details</h2>
+          <p class="section-note">
+            Expand a savings bucket to inspect the recommended actions, scope, and supporting evidence.
+          </p>
+          <div class="stack">
+            {% for bucket in action_context.bucket_details %}
+              <details class="bucket-disclosure">
+                <summary class="bucket-disclosure-summary">
+                  <div class="bucket-disclosure-copy">
+                    <div class="bucket-disclosure-header-row">
+                      <h3>{{ bucket.bucket }}</h3>
+                      <div class="bucket-totals">
+                        <span class="bucket-savings">{{ bucket.monthly_savings_display }} / month</span>
+                        <span class="bucket-count">{{ bucket.opportunity_count }} opportunities</span>
+                      </div>
+                    </div>
+                    <p class="section-note bucket-disclosure-note">{{ bucket.summary }}</p>
+                  </div>
+                  <span class="bucket-disclosure-toggle">Expand</span>
+                </summary>
+
+                <div class="bucket-disclosure-body">
+                  <div class="stack detail-stack">
+                    {% for action in bucket.actions %}
+                      <article class="detail-card">
+                        <div class="detail-card-header">
+                          <div>
+                            <div class="table-primary">{{ action.action_label }}</div>
+                            <div class="table-secondary">{{ action.source_label }} · {{ action.lever_label }} · {{ action.source_trust_note }} · confidence {{ action.confidence_label }}</div>
+                          </div>
+                          <div class="detail-card-savings">{{ action.monthly_savings_display }}</div>
+                        </div>
+
+                        <div class="detail-meta-row">
+                          <span class="badge badge-{{ action.risk }}">{{ action.risk_label }} risk</span>
+                          <span class="badge badge-{{ action.effort }}">{{ action.effort_label }} effort</span>
+                        </div>
+
+                        <p class="status-note"><strong>Why this matters:</strong> {{ action.why_it_matters }}</p>
+                        <p class="status-note"><strong>What to do first:</strong> {{ action.what_to_do_first }}</p>
+                        <p class="status-note"><strong>Evidence:</strong> {{ action.evidence_summary }}</p>
+                        <p class="status-note"><strong>Scope:</strong> {{ action.resource_count }} resources across {{ action.account_count }} accounts.</p>
+
+                        {% if action.supporting_items %}
+                          <div class="supporting-items">
+                            {% for item in action.supporting_items[:3] %}
+                              <div class="supporting-item">
+                                <div class="table-primary">{{ item.resource_name or item.resource_id }}</div>
+                                <div class="table-secondary">{{ item.account_name }} · {{ item.region }} · {{ item.monthly_savings_display }}</div>
+                                {% if item.detail %}
+                                  <div class="table-secondary">{{ item.detail }}</div>
+                                {% endif %}
+                              </div>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                      </article>
+                    {% endfor %}
+                  </div>
+                </div>
+              </details>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if action_context.collection_notes %}
+        <section class="section">
+          <h2>Coverage notes</h2>
+          <p class="section-note">
+            Some AWS data sources returned partial coverage during this run. Detailed validation context remains in the appendix.
+          </p>
+          <div class="card">
+            <div class="module-list">
+              {% for note in action_context.collection_notes %}
+                <div class="module-item">
+                  <div class="module-heading">
+                    <span>{{ note.label }}</span>
+                    <span class="badge badge-medium">{{ note.status }}</span>
+                  </div>
+                  <p class="status-note">{{ note.reason }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if appendix_href %}
+        <section class="section section-tight appendix-link-row">
+          <a class="page-link page-link-secondary" href="{{ appendix_href }}">
+            Open technical appendix
+          </a>
+        </section>
+      {% endif %}
+    </div>
+  </body>
+</html>
