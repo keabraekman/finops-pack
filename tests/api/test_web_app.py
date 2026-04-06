@@ -282,3 +282,8 @@ def test_web_app_serves_completed_report_artifacts(tmp_path: Path) -> None:
     dashboard = client.get(f"/artifacts/{run.public_id}/dashboard.html")
     assert dashboard.status_code == 200
     assert "Dashboard" in dashboard.text
+
+    status_response = client.get(f"/runs/{run.public_id}/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "SUCCEEDED"
+    assert status_response.json()["result_url"].endswith(f"/runs/{run.public_id}")

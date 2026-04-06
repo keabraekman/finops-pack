@@ -301,7 +301,9 @@ def create_app(
                 "status": run.status,
                 "error_summary": run.error_summary,
                 "dashboard_url": _artifact_url(run, "dashboard_path"),
-                "result_url": request.url_for("run_status_page", run_public_id=run_public_id),
+                "result_url": str(
+                    request.url_for("run_status_page", run_public_id=run_public_id)
+                ),
             }
         )
 
